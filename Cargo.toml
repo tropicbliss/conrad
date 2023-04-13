@@ -1,0 +1,11 @@
+[package]
+name = "conrad"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "A name-squatted crate requested by someone who goes by the name of Conrad on the Rust Community Discord server"
+readme = "README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
