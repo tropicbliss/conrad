@@ -133,7 +133,7 @@ where
             }
         });
         stream::iter(dead_session_ids)
-            .for_each_concurrent(2, |id| async move {
+            .for_each_concurrent(3, |id| async move {
                 self.adapter.delete_session(&id).await;
             })
             .await;
