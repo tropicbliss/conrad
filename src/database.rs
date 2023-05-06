@@ -2,20 +2,12 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait DatabaseAdapter<U> {
-    async fn set_user(
-        &self,
-        user_id: &UserId,
-        user_attributes: &U,
-        key: KeySchema,
-    ) -> CreateUserStatus;
+    async fn set_user(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
     async fn get_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
-    async fn create_session(
-        &self,
-        user_id: &UserId,
-        session_data: &SessionData,
-    ) -> CreateSessionStatus;
+    async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
     async fn delete_session(&self, session_id: &str) -> DeleteSessionStatus;
+    async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
 }
 
 #[derive(Clone, Debug)]
@@ -50,8 +42,8 @@ pub enum CreateSessionStatus {
 }
 
 #[derive(Clone, Debug)]
-pub enum ReadSessionsStatus {
-    Ok(Vec<(SessionData, UserId)>),
+pub enum ReadSessionsStatus<'a> {
+    Ok(Vec<SessionSchema<'a>>),
     DatabaseError(String),
 }
 
@@ -59,6 +51,13 @@ pub enum ReadSessionsStatus {
 pub enum DeleteSessionStatus {
     Ok,
     DatabaseError(String),
+}
+
+#[derive(Clone, Debug)]
+pub enum ReadSessionStatus<'a> {
+    Ok(SessionSchema<'a>),
+    DatabaseError(String),
+    SessionNotFound,
 }
 
 #[derive(Clone, Debug)]
@@ -96,4 +95,10 @@ pub struct SessionData {
     pub session_id: String,
     pub active_period_expires_at: i64,
     pub idle_period_expires_at: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct SessionSchema<'a> {
+    pub session_data: &'a SessionData,
+    pub user_id: &'a UserId,
 }

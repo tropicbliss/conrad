@@ -10,4 +10,7 @@ pub enum AuthError {
 
     #[error("duplicate session id")]
     DuplicateSessionId,
+
+    #[error("invalid session id")]
+    InvalidSessionId,
 }
