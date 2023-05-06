@@ -126,16 +126,16 @@ where
                 }
             }
         }
-        if error || session_id.is_none() {
-            cookie.set_value("");
-            cookie.set_expires(OffsetDateTime::UNIX_EPOCH);
-            Ok(None)
-        } else {
-            // SAFETY: session_id is always Some(x) in this branch
-            let session = self
-                .validate_session(unsafe { session_id.unwrap_unchecked() })
-                .await?;
-            Ok(Some(session))
+        match session_id {
+            Some(session_id) if !error => {
+                let session = self.validate_session(session_id).await?;
+                Ok(Some(session))
+            }
+            _ => {
+                cookie.set_value("");
+                cookie.set_expires(OffsetDateTime::UNIX_EPOCH);
+                Ok(None)
+            }
         }
     }
 
