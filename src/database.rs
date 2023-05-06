@@ -84,9 +84,9 @@ pub struct User<U> {
 
 #[derive(Clone, Debug)]
 pub struct Session {
-    pub active_period_expires_at: u64,
+    pub active_period_expires_at: i64,
     pub session_id: String,
-    pub idle_period_expires_at: u64,
+    pub idle_period_expires_at: i64,
     pub state: &'static str,
     pub fresh: bool,
 }
@@ -94,6 +94,6 @@ pub struct Session {
 #[derive(Clone, Debug)]
 pub struct SessionData {
     pub session_id: String,
-    pub active_period_expires_at: u64,
-    pub idle_period_expires_at: u64,
+    pub active_period_expires_at: i64,
+    pub idle_period_expires_at: i64,
 }

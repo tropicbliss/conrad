@@ -1,8 +1,8 @@
+use cookie::time::OffsetDateTime;
 use scrypt::{
     password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Scrypt,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Hash password using scrypt
 pub fn hash_password(password: &str) -> String {
@@ -14,10 +14,6 @@ pub fn hash_password(password: &str) -> String {
 }
 
 /// In milliseconds.
-pub fn is_within_expiration(expires: u64) -> bool {
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
-    current_time <= expires
+pub fn is_within_expiration(expires: i64) -> bool {
+    OffsetDateTime::now_utc() <= OffsetDateTime::from_unix_timestamp(expires).unwrap()
 }

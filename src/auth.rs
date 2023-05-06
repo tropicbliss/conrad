@@ -8,10 +8,7 @@ use crate::{
 };
 use cookie::{time::OffsetDateTime, Cookie};
 use futures::{stream, StreamExt};
-use std::{
-    marker::PhantomData,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{marker::PhantomData, time::Duration};
 use tokio::join;
 use uuid::Uuid;
 
@@ -105,17 +102,12 @@ where
         const ACTIVE_PERIOD: u64 = 1000 * 60 * 60 * 24;
         const IDLE_PERIOD: u64 = 1000 * 60 * 60 * 24 * 14;
         let session_id = Uuid::new_v4().to_string();
-        let active_period_expires_at = SystemTime::now() + Duration::from_millis(ACTIVE_PERIOD);
+        let active_period_expires_at =
+            OffsetDateTime::now_utc() + Duration::from_millis(ACTIVE_PERIOD);
         let idle_period_expires_at = active_period_expires_at + Duration::from_millis(IDLE_PERIOD);
         SessionData {
-            active_period_expires_at: active_period_expires_at
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            idle_period_expires_at: idle_period_expires_at
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
+            active_period_expires_at: active_period_expires_at.unix_timestamp(),
+            idle_period_expires_at: idle_period_expires_at.unix_timestamp(),
             session_id,
         }
     }
@@ -149,9 +141,7 @@ impl Session {
             .path("/")
             .http_only(true)
             .secure(true)
-            .expires(
-                OffsetDateTime::UNIX_EPOCH + Duration::from_millis(self.idle_period_expires_at),
-            )
+            .expires(OffsetDateTime::from_unix_timestamp(self.idle_period_expires_at).unwrap())
             .finish()
     }
 }
