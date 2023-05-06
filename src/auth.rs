@@ -4,6 +4,7 @@ use crate::{
         ReadUserStatus, Session, SessionData, User, UserId,
     },
     errors::AuthError,
+    framework::Cookie,
     utils,
 };
 use futures::{stream, StreamExt};
@@ -88,6 +89,16 @@ where
                 state: "active",
                 fresh: true,
             }),
+        }
+    }
+
+    pub fn create_cookie(session: &Session) -> Cookie {
+        Cookie {
+            same_site: "lax",
+            path: "/",
+            http_only: true,
+            expires: UNIX_EPOCH + Duration::from_millis(session.idle_period_expires_at),
+            secure: true,
         }
     }
 
