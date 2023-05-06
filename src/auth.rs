@@ -4,9 +4,9 @@ use crate::{
         ReadUserStatus, Session, SessionData, User, UserId,
     },
     errors::AuthError,
-    framework::Cookie,
     utils,
 };
+use cookie::{time::OffsetDateTime, Cookie};
 use futures::{stream, StreamExt};
 use std::{
     marker::PhantomData,
@@ -92,16 +92,6 @@ where
         }
     }
 
-    pub fn create_cookie(session: &Session) -> Cookie {
-        Cookie {
-            same_site: "lax",
-            path: "/",
-            http_only: true,
-            expires: UNIX_EPOCH + Duration::from_millis(session.idle_period_expires_at),
-            secure: true,
-        }
-    }
-
     async fn get_user(&self, user_id: &UserId) -> Result<User<U>, AuthError> {
         let res = self.adapter.get_user(user_id).await;
         match res {
@@ -149,5 +139,19 @@ where
             })
             .await;
         Ok(())
+    }
+}
+
+impl Session {
+    pub fn create_cookie(&self) -> Cookie {
+        Cookie::build("auth_session", &self.session_id)
+            .same_site(cookie::SameSite::Lax)
+            .path("/")
+            .http_only(true)
+            .secure(true)
+            .expires(
+                OffsetDateTime::UNIX_EPOCH + Duration::from_millis(self.idle_period_expires_at),
+            )
+            .finish()
     }
 }

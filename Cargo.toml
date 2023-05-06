@@ -10,6 +10,7 @@ readme = "README.md"
 
 [dependencies]
 async-trait = "0.1"
+cookie = "0.16"
 futures = "0.3"
 scrypt = "0.11"
 thiserror = "1.0"
