@@ -2,8 +2,8 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait DatabaseAdapter<U> {
-    async fn set_user(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
-    async fn get_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
+    async fn create_user(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
+    async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
     async fn delete_session(&self, session_id: &str) -> DeleteSessionStatus;
@@ -101,4 +101,10 @@ pub struct SessionData {
 pub struct SessionSchema<'a> {
     pub session_data: &'a SessionData,
     pub user_id: &'a UserId,
+}
+
+#[derive(Clone, Debug)]
+pub struct ValidationSuccess<U> {
+    pub session: Session,
+    pub user: User<U>,
 }
