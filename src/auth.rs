@@ -339,15 +339,3 @@ where
         Ok(())
     }
 }
-
-impl Session {
-    pub fn create_cookie(&self) -> Cookie {
-        Cookie::build(SESSION_COOKIE_NAME, &self.session_id)
-            .same_site(cookie::SameSite::Lax)
-            .path("/")
-            .http_only(true)
-            .secure(true)
-            .expires(OffsetDateTime::from_unix_timestamp(self.idle_period_expires_at).unwrap())
-            .finish()
-    }
-}
