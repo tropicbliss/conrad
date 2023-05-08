@@ -190,6 +190,14 @@ where
         }
     }
 
+    pub async fn invalidate_session(&self, session_id: &str) -> Result<(), AuthError> {
+        let res = self.adapter.delete_session(session_id).await;
+        match res {
+            DeleteSessionStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            DeleteSessionStatus::Ok => Ok(()),
+        }
+    }
+
     pub async fn validate_user<'c>(
         &self,
         cookies: &mut CookieJar,

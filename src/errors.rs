@@ -1,9 +1,10 @@
+use std::error::Error;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AuthError {
-    #[error("database error: {0}")]
-    DatabaseError(String),
+    #[error("database error: {0:?}")]
+    DatabaseError(Box<dyn Error>),
 
     #[error("invalid user id")]
     InvalidUserId,

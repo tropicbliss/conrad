@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::error::Error;
 
 #[async_trait]
 pub trait DatabaseAdapter<U> {
@@ -19,51 +20,51 @@ pub struct KeySchema<'a> {
     // check the use_key() method if expires is added back in
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum CreateUserStatus {
     Ok,
     UserAlreadyExists,
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ReadUserStatus<U> {
     Ok(User<U>),
     UserDoesNotExist,
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum CreateSessionStatus {
     Ok,
     InvalidUserId,
     DuplicateSessionId,
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ReadSessionsStatus<'a> {
     Ok(Vec<SessionSchema<'a>>),
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum DeleteSessionStatus {
     Ok,
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ReadSessionStatus<'a> {
     Ok(SessionSchema<'a>),
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
     SessionNotFound,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ReadKeyStatus<'a> {
     Ok(KeySchema<'a>),
-    DatabaseError(String),
+    DatabaseError(Box<dyn Error>),
     NoKeyFound,
 }
 
