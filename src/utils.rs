@@ -1,6 +1,6 @@
 use cookie::time::OffsetDateTime;
 use scrypt::{
-    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Scrypt,
 };
 
@@ -11,6 +11,13 @@ pub fn hash_password(password: &str) -> String {
         .hash_password(password.as_bytes(), &salt)
         .unwrap()
         .to_string()
+}
+
+pub fn validate_password(password: &str, hashed_password: &str) -> bool {
+    let parsed_hash = PasswordHash::new(hashed_password).unwrap();
+    Scrypt
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok()
 }
 
 /// In milliseconds.

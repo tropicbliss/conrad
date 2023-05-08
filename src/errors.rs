@@ -13,4 +13,13 @@ pub enum AuthError {
 
     #[error("invalid session id")]
     InvalidSessionId,
+
+    #[error("invalid key id")]
+    InvalidKeyId,
+
+    #[error("invalid password")]
+    InvalidPassword,
+
+    #[error("outdated password")]
+    OutdatedPassword,
 }

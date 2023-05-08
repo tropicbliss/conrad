@@ -2,21 +2,21 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait DatabaseAdapter<U> {
-    async fn create_user(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
+    async fn create_user_and_key(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
     async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
     async fn delete_session(&self, session_id: &str) -> DeleteSessionStatus;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
+    async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
 }
 
 #[derive(Clone, Debug)]
 pub struct KeySchema<'a> {
     pub id: &'a str,
     pub hashed_password: &'a str,
-    pub primary_key: bool,
     pub user_id: &'a UserId,
-    pub expires: Option<i32>,
+    // check the use_key() method if expires is added back in
 }
 
 #[derive(Clone, Debug)]
@@ -61,6 +61,13 @@ pub enum ReadSessionStatus<'a> {
 }
 
 #[derive(Clone, Debug)]
+pub enum ReadKeyStatus<'a> {
+    Ok(KeySchema<'a>),
+    DatabaseError(String),
+    NoKeyFound,
+}
+
+#[derive(Clone, Debug)]
 pub struct UserId(String);
 
 impl UserId {
@@ -86,7 +93,7 @@ pub struct Session {
     pub active_period_expires_at: i64,
     pub session_id: String,
     pub idle_period_expires_at: i64,
-    pub state: &'static str,
+    pub state: SessionState,
     pub fresh: bool,
 }
 
@@ -107,4 +114,17 @@ pub struct SessionSchema<'a> {
 pub struct ValidationSuccess<U> {
     pub session: Session,
     pub user: User<U>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SessionState {
+    Active,
+    Idle,
+}
+
+#[derive(Clone, Debug)]
+pub struct UserMetadata {
+    pub provider_id: String,
+    pub provider_user_id: String,
+    pub user_id: UserId,
 }

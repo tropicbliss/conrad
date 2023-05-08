@@ -1,8 +1,8 @@
 use crate::{
     database::{
         CreateSessionStatus, CreateUserStatus, DatabaseAdapter, DeleteSessionStatus, KeySchema,
-        ReadSessionStatus, ReadSessionsStatus, ReadUserStatus, Session, SessionData, SessionSchema,
-        User, UserId, ValidationSuccess,
+        ReadKeyStatus, ReadSessionStatus, ReadSessionsStatus, ReadUserStatus, Session, SessionData,
+        SessionSchema, SessionState, User, UserId, UserMetadata, ValidationSuccess,
     },
     errors::AuthError,
     utils,
@@ -52,14 +52,12 @@ where
         let user_id = UserId::new(user_id);
         let res = self
             .adapter
-            .create_user(
+            .create_user_and_key(
                 &attributes,
                 KeySchema {
                     id: &key_id,
                     user_id: &user_id,
                     hashed_password: &hashed_password,
-                    primary_key: true,
-                    expires: None,
                 },
             )
             .await;
@@ -71,6 +69,47 @@ where
                 user_attributes: attributes,
             }),
         }
+    }
+
+    pub async fn use_key(
+        &self,
+        provider_id: &str,
+        provider_user_id: &str,
+        password: &str,
+    ) -> Result<UserMetadata, AuthError> {
+        let key_id = format!("{}:{}", provider_id, provider_user_id);
+        let res = self.adapter.read_key(&key_id).await;
+        let database_key_data = match res {
+            ReadKeyStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+            ReadKeyStatus::Ok(k) => k,
+            ReadKeyStatus::NoKeyFound => return Err(AuthError::InvalidKeyId),
+        };
+        let hashed_password = database_key_data.hashed_password;
+        if password.is_empty() || hashed_password.is_empty() {
+            return Err(AuthError::InvalidPassword);
+        }
+        if hashed_password.starts_with("$2a") {
+            return Err(AuthError::OutdatedPassword);
+        }
+        let valid_password = {
+            let password = password.to_string();
+            let hashed_password = hashed_password.to_string();
+            tokio::task::spawn_blocking(move || {
+                utils::validate_password(&password, &hashed_password)
+            })
+            .await
+            .unwrap()
+        };
+        if !valid_password {
+            return Err(AuthError::InvalidPassword);
+        }
+        let (provider_id, provider_user_id) = database_key_data.id.split_once(':').unwrap();
+        let user_id = database_key_data.user_id;
+        Ok(UserMetadata {
+            provider_id: provider_id.to_string(),
+            provider_user_id: provider_user_id.to_string(),
+            user_id: user_id.clone(),
+        })
     }
 
     pub async fn create_session(&self, user_id: &UserId) -> Result<Session, AuthError> {
@@ -91,7 +130,7 @@ where
                 active_period_expires_at: session_schema.session_data.active_period_expires_at,
                 session_id: session_schema.session_data.session_id.clone(),
                 idle_period_expires_at: session_schema.session_data.idle_period_expires_at,
-                state: "active",
+                state: SessionState::Active,
                 fresh: true,
             }),
         }
@@ -200,7 +239,7 @@ where
         session_id: &str,
     ) -> Result<ValidationSuccess<U>, AuthError> {
         let info = self.get_session_user(session_id).await?;
-        if info.session.state == "active" {
+        if info.session.state == SessionState::Active {
             Ok(info)
         } else {
             let renewed_session = self.get_session(session_id, true).await?;
@@ -243,7 +282,7 @@ where
 
     async fn validate_session(&self, session_id: &str) -> Result<Session, AuthError> {
         let session = self.get_session(session_id, false).await?;
-        if session.state == "active" {
+        if session.state == SessionState::Active {
             Ok(session)
         } else {
             self.get_session(session_id, true).await
@@ -254,7 +293,11 @@ where
         if utils::is_within_expiration(database_session.idle_period_expires_at) {
             let active_key = utils::is_within_expiration(database_session.active_period_expires_at);
             Some(Session {
-                state: if active_key { "active" } else { "idle" },
+                state: if active_key {
+                    SessionState::Active
+                } else {
+                    SessionState::Idle
+                },
                 fresh: false,
                 active_period_expires_at: database_session.active_period_expires_at,
                 idle_period_expires_at: database_session.idle_period_expires_at,
