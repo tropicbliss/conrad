@@ -4,23 +4,23 @@ use std::error::Error;
 #[async_trait]
 pub trait DatabaseAdapter<U> {
     async fn create_user_and_key(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
-    async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
+    async fn read_user(&self, user_id: &str) -> ReadUserStatus<U>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
-    async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
+    async fn read_sessions(&self, user_id: &str) -> ReadSessionsStatus;
     async fn delete_session_by_session_id(&self, session_id: &str) -> GeneralStatus;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
     async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
-    async fn update_user(&self, user_id: &UserId, user_attributes: &U) -> UpdateUserStatus;
-    async fn delete_session_by_user_id(&self, user_id: &UserId) -> GeneralStatus;
-    async fn delete_key(&self, user_id: &UserId) -> GeneralStatus;
-    async fn delete_user(&self, user_id: &UserId) -> GeneralStatus;
+    async fn update_user(&self, user_id: &str, user_attributes: &U) -> UpdateUserStatus;
+    async fn delete_session_by_user_id(&self, user_id: &str) -> GeneralStatus;
+    async fn delete_key(&self, user_id: &str) -> GeneralStatus;
+    async fn delete_user(&self, user_id: &str) -> GeneralStatus;
 }
 
 #[derive(Clone, Debug)]
 pub struct KeySchema<'a> {
     pub id: &'a str,
     pub hashed_password: Option<&'a str>,
-    pub user_id: &'a UserId,
+    pub user_id: &'a str,
     // check the use_key() method if expires is added back in
 }
 
@@ -80,23 +80,8 @@ pub enum UpdateUserStatus {
 }
 
 #[derive(Clone, Debug)]
-pub struct UserId(String);
-
-impl UserId {
-    pub(crate) fn new(user_id: String) -> Self {
-        Self(user_id)
-    }
-}
-
-impl ToString for UserId {
-    fn to_string(&self) -> String {
-        self.0.clone()
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct User<U> {
-    pub user_id: UserId,
+    pub user_id: String,
     pub user_attributes: U,
 }
 
@@ -119,7 +104,7 @@ pub struct SessionData {
 #[derive(Clone, Debug)]
 pub struct SessionSchema<'a> {
     pub session_data: &'a SessionData,
-    pub user_id: &'a UserId,
+    pub user_id: &'a str,
 }
 
 #[derive(Clone, Debug)]
@@ -138,5 +123,5 @@ pub enum SessionState {
 pub struct UserMetadata {
     pub provider_id: String,
     pub provider_user_id: String,
-    pub user_id: UserId,
+    pub user_id: String,
 }

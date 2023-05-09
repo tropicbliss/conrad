@@ -2,8 +2,7 @@ use crate::{
     database::{
         CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus, KeySchema,
         ReadKeyStatus, ReadSessionStatus, ReadSessionsStatus, ReadUserStatus, Session, SessionData,
-        SessionSchema, SessionState, UpdateUserStatus, User, UserId, UserMetadata,
-        ValidationSuccess,
+        SessionSchema, SessionState, UpdateUserStatus, User, UserMetadata, ValidationSuccess,
     },
     errors::AuthError,
     utils,
@@ -62,7 +61,6 @@ where
         } else {
             None
         };
-        let user_id = UserId::new(user_id);
         let res = self
             .adapter
             .create_user_and_key(
@@ -127,11 +125,11 @@ where
         Ok(UserMetadata {
             provider_id: provider_id.to_string(),
             provider_user_id: provider_user_id.to_string(),
-            user_id: user_id.clone(),
+            user_id: user_id.to_string(),
         })
     }
 
-    pub async fn create_session(&self, user_id: &UserId) -> Result<Session, AuthError> {
+    pub async fn create_session(&self, user_id: &str) -> Result<Session, AuthError> {
         let session_info = Self::generate_session_id();
         let session_schema = SessionSchema {
             session_data: &session_info,
@@ -365,7 +363,7 @@ where
         }
     }
 
-    pub async fn get_user(&self, user_id: &UserId) -> Result<User<U>, AuthError> {
+    pub async fn get_user(&self, user_id: &str) -> Result<User<U>, AuthError> {
         let res = self.adapter.read_user(user_id).await;
         match res {
             ReadUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -388,7 +386,7 @@ where
         }
     }
 
-    async fn delete_dead_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
+    async fn delete_dead_user_sessions(&self, user_id: &str) -> Result<(), AuthError> {
         let res = self.adapter.read_sessions(user_id).await;
         let database_sessions = match res {
             ReadSessionsStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
@@ -411,7 +409,7 @@ where
 
     pub async fn update_user_attributes(
         &self,
-        user_id: &UserId,
+        user_id: &str,
         attributes: &U,
     ) -> Result<User<U>, AuthError> {
         let (res, _) = join!(
@@ -426,7 +424,7 @@ where
         self.get_user(user_id).await
     }
 
-    pub async fn invalidate_all_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
+    pub async fn invalidate_all_user_sessions(&self, user_id: &str) -> Result<(), AuthError> {
         let res = self.adapter.delete_session_by_user_id(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -434,7 +432,7 @@ where
         }
     }
 
-    pub async fn delete_user(&self, user_id: &UserId) -> Result<(), AuthError> {
+    pub async fn delete_user(&self, user_id: &str) -> Result<(), AuthError> {
         let res = self.adapter.delete_session_by_user_id(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
