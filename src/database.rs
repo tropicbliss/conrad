@@ -7,15 +7,19 @@ pub trait DatabaseAdapter<U> {
     async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
-    async fn delete_session(&self, session_id: &str) -> DeleteSessionStatus;
+    async fn delete_session_by_session_id(&self, session_id: &str) -> GeneralStatus;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
     async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
+    async fn update_user(&self, user_id: &UserId, user_attributes: &U) -> UpdateUserStatus;
+    async fn delete_session_by_user_id(&self, user_id: &UserId) -> GeneralStatus;
+    async fn delete_key(&self, user_id: &UserId) -> GeneralStatus;
+    async fn delete_user(&self, user_id: &UserId) -> GeneralStatus;
 }
 
 #[derive(Clone, Debug)]
 pub struct KeySchema<'a> {
     pub id: &'a str,
-    pub hashed_password: &'a str,
+    pub hashed_password: Option<&'a str>,
     pub user_id: &'a UserId,
     // check the use_key() method if expires is added back in
 }
@@ -49,7 +53,7 @@ pub enum ReadSessionsStatus<'a> {
 }
 
 #[derive(Debug)]
-pub enum DeleteSessionStatus {
+pub enum GeneralStatus {
     Ok,
     DatabaseError(Box<dyn Error>),
 }
@@ -66,6 +70,13 @@ pub enum ReadKeyStatus<'a> {
     Ok(KeySchema<'a>),
     DatabaseError(Box<dyn Error>),
     NoKeyFound,
+}
+
+#[derive(Debug)]
+pub enum UpdateUserStatus {
+    Ok,
+    UserDoesNotExist,
+    DatabaseError(Box<dyn Error>),
 }
 
 #[derive(Clone, Debug)]

@@ -1,8 +1,9 @@
 use crate::{
     database::{
-        CreateSessionStatus, CreateUserStatus, DatabaseAdapter, DeleteSessionStatus, KeySchema,
+        CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus, KeySchema,
         ReadKeyStatus, ReadSessionStatus, ReadSessionsStatus, ReadUserStatus, Session, SessionData,
-        SessionSchema, SessionState, User, UserId, UserMetadata, ValidationSuccess,
+        SessionSchema, SessionState, UpdateUserStatus, User, UserId, UserMetadata,
+        ValidationSuccess,
     },
     errors::AuthError,
     utils,
@@ -34,20 +35,32 @@ where
     }
 
     /// `attributes` represent extra user metadata that can be stored on user creation.
-    pub async fn create_user(
+    pub async fn create_user<F>(
         &self,
         provider_id: &str,
         provider_user_id: &str,
-        password: &str,
+        password: Option<&str>,
         attributes: U,
-    ) -> Result<User<U>, AuthError> {
-        let user_id = Uuid::new_v4().to_string();
+        generate_custom_user_id: Option<F>,
+    ) -> Result<User<U>, AuthError>
+    where
+        F: FnOnce() -> String,
+    {
+        let user_id = if let Some(closure) = generate_custom_user_id {
+            closure()
+        } else {
+            Uuid::new_v4().to_string()
+        };
         let key_id = format!("{}:{}", provider_id, provider_user_id);
-        let hashed_password = {
+        let hashed_password = if let Some(password) = password {
             let password = password.to_string();
-            tokio::task::spawn_blocking(move || utils::hash_password(&password))
-                .await
-                .unwrap()
+            Some(
+                tokio::task::spawn_blocking(move || utils::hash_password(&password))
+                    .await
+                    .unwrap(),
+            )
+        } else {
+            None
         };
         let user_id = UserId::new(user_id);
         let res = self
@@ -57,7 +70,7 @@ where
                 KeySchema {
                     id: &key_id,
                     user_id: &user_id,
-                    hashed_password: &hashed_password,
+                    hashed_password: hashed_password.as_deref(),
                 },
             )
             .await;
@@ -75,7 +88,7 @@ where
         &self,
         provider_id: &str,
         provider_user_id: &str,
-        password: &str,
+        password: Option<&str>,
     ) -> Result<UserMetadata, AuthError> {
         let key_id = format!("{}:{}", provider_id, provider_user_id);
         let res = self.adapter.read_key(&key_id).await;
@@ -85,23 +98,29 @@ where
             ReadKeyStatus::NoKeyFound => return Err(AuthError::InvalidKeyId),
         };
         let hashed_password = database_key_data.hashed_password;
-        if password.is_empty() || hashed_password.is_empty() {
-            return Err(AuthError::InvalidPassword);
-        }
-        if hashed_password.starts_with("$2a") {
-            return Err(AuthError::OutdatedPassword);
-        }
-        let valid_password = {
-            let password = password.to_string();
-            let hashed_password = hashed_password.to_string();
-            tokio::task::spawn_blocking(move || {
-                utils::validate_password(&password, &hashed_password)
-            })
-            .await
-            .unwrap()
-        };
-        if !valid_password {
-            return Err(AuthError::InvalidPassword);
+        if let Some(hashed_password) = hashed_password {
+            if let Some(password) = password {
+                if password.is_empty() || hashed_password.is_empty() {
+                    return Err(AuthError::InvalidPassword);
+                }
+                if hashed_password.starts_with("$2a") {
+                    return Err(AuthError::OutdatedPassword);
+                }
+                let valid_password = {
+                    let password = password.to_string();
+                    let hashed_password = hashed_password.to_string();
+                    tokio::task::spawn_blocking(move || {
+                        utils::validate_password(&password, &hashed_password)
+                    })
+                    .await
+                    .unwrap()
+                };
+                if !valid_password {
+                    return Err(AuthError::InvalidPassword);
+                }
+            } else {
+                return Err(AuthError::InvalidPassword);
+            }
         }
         let (provider_id, provider_user_id) = database_key_data.id.split_once(':').unwrap();
         let user_id = database_key_data.user_id;
@@ -191,10 +210,10 @@ where
     }
 
     pub async fn invalidate_session(&self, session_id: &str) -> Result<(), AuthError> {
-        let res = self.adapter.delete_session(session_id).await;
+        let res = self.adapter.delete_session_by_session_id(session_id).await;
         match res {
-            DeleteSessionStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-            DeleteSessionStatus::Ok => Ok(()),
+            GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok => Ok(()),
         }
     }
 
@@ -282,7 +301,7 @@ where
             })
         } else {
             self.adapter
-                .delete_session(&session_data.session_data.session_id)
+                .delete_session_by_session_id(&session_data.session_data.session_id)
                 .await;
             Err(AuthError::InvalidSessionId)
         }
@@ -338,15 +357,15 @@ where
                 Ok(session)
             }
         } else {
-            let res = self.adapter.delete_session(session_id).await;
+            let res = self.adapter.delete_session_by_session_id(session_id).await;
             match res {
-                DeleteSessionStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-                DeleteSessionStatus::Ok => Err(AuthError::InvalidSessionId),
+                GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+                GeneralStatus::Ok => Err(AuthError::InvalidSessionId),
             }
         }
     }
 
-    async fn get_user(&self, user_id: &UserId) -> Result<User<U>, AuthError> {
+    pub async fn get_user(&self, user_id: &UserId) -> Result<User<U>, AuthError> {
         let res = self.adapter.read_user(user_id).await;
         match res {
             ReadUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -384,9 +403,52 @@ where
         });
         stream::iter(dead_session_ids)
             .for_each_concurrent(3, |id| async move {
-                self.adapter.delete_session(&id).await;
+                self.adapter.delete_session_by_session_id(&id).await;
             })
             .await;
         Ok(())
+    }
+
+    pub async fn update_user_attributes(
+        &self,
+        user_id: &UserId,
+        attributes: &U,
+    ) -> Result<User<U>, AuthError> {
+        let (res, _) = join!(
+            self.adapter.update_user(user_id, attributes),
+            self.delete_dead_user_sessions(user_id)
+        );
+        match res {
+            UpdateUserStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+            UpdateUserStatus::UserDoesNotExist => return Err(AuthError::InvalidUserId),
+            UpdateUserStatus::Ok => (),
+        }
+        self.get_user(user_id).await
+    }
+
+    pub async fn invalidate_all_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
+        let res = self.adapter.delete_session_by_user_id(user_id).await;
+        match res {
+            GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok => Ok(()),
+        }
+    }
+
+    pub async fn delete_user(&self, user_id: &UserId) -> Result<(), AuthError> {
+        let res = self.adapter.delete_session_by_user_id(user_id).await;
+        match res {
+            GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok => (),
+        }
+        let res = self.adapter.delete_key(user_id).await;
+        match res {
+            GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok => (),
+        }
+        let res = self.adapter.delete_user(user_id).await;
+        match res {
+            GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok => Ok(()),
+        }
     }
 }
