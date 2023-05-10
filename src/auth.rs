@@ -10,27 +10,23 @@ use crate::{
 use cookie::{time::OffsetDateTime, Cookie, CookieJar};
 use futures::{stream, StreamExt};
 use http::{HeaderMap, Method};
-use std::{marker::PhantomData, time::Duration};
+use std::time::Duration;
 use tokio::join;
 use url::Url;
 use uuid::Uuid;
 
 const SESSION_COOKIE_NAME: &str = "auth_session";
 
-pub struct Authenticator<D, U> {
-    user_attributes: PhantomData<U>,
+pub struct Authenticator<D> {
     adapter: D,
 }
 
-impl<D, U> Authenticator<D, U>
+impl<D> Authenticator<D>
 where
-    D: DatabaseAdapter<U>,
+    D: DatabaseAdapter,
 {
     pub fn new(adapter: D) -> Self {
-        Self {
-            user_attributes: PhantomData::default(),
-            adapter,
-        }
+        Self { adapter }
     }
 
     /// `attributes` represent extra user metadata that can be stored on user creation.
@@ -39,9 +35,9 @@ where
         provider_id: &str,
         provider_user_id: &str,
         password: Option<&str>,
-        attributes: U,
+        attributes: D::UserAttributes,
         generate_custom_user_id: Option<F>,
-    ) -> Result<User<U>, AuthError>
+    ) -> Result<User<D::UserAttributes>, AuthError>
     where
         F: FnOnce() -> String,
     {
@@ -221,7 +217,7 @@ where
         method: &Method,
         headers: &HeaderMap,
         origin_url: &Url,
-    ) -> Result<Option<ValidationSuccess<U>>, AuthError> {
+    ) -> Result<Option<ValidationSuccess<D::UserAttributes>>, AuthError> {
         let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
         match session_id {
             Some(session_id) => {
@@ -262,7 +258,7 @@ where
     async fn validate_session_user(
         &self,
         session_id: &str,
-    ) -> Result<ValidationSuccess<U>, AuthError> {
+    ) -> Result<ValidationSuccess<D::UserAttributes>, AuthError> {
         let info = self.get_session_user(session_id).await?;
         if info.session.state == SessionState::Active {
             Ok(info)
@@ -275,7 +271,10 @@ where
         }
     }
 
-    async fn get_session_user(&self, session_id: &str) -> Result<ValidationSuccess<U>, AuthError> {
+    async fn get_session_user(
+        &self,
+        session_id: &str,
+    ) -> Result<ValidationSuccess<D::UserAttributes>, AuthError> {
         if Uuid::try_parse(session_id).is_err() {
             return Err(AuthError::InvalidSessionId);
         }
@@ -363,7 +362,7 @@ where
         }
     }
 
-    pub async fn get_user(&self, user_id: &str) -> Result<User<U>, AuthError> {
+    pub async fn get_user(&self, user_id: &str) -> Result<User<D::UserAttributes>, AuthError> {
         let res = self.adapter.read_user(user_id).await;
         match res {
             ReadUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -410,8 +409,8 @@ where
     pub async fn update_user_attributes(
         &self,
         user_id: &str,
-        attributes: &U,
-    ) -> Result<User<U>, AuthError> {
+        attributes: &D::UserAttributes,
+    ) -> Result<User<D::UserAttributes>, AuthError> {
         let (res, _) = join!(
             self.adapter.update_user(user_id, attributes),
             self.delete_dead_user_sessions(user_id)

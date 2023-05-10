@@ -2,15 +2,25 @@ use async_trait::async_trait;
 use std::error::Error;
 
 #[async_trait]
-pub trait DatabaseAdapter<U> {
-    async fn create_user_and_key(&self, user_attributes: &U, key: KeySchema) -> CreateUserStatus;
-    async fn read_user(&self, user_id: &str) -> ReadUserStatus<U>;
+pub trait DatabaseAdapter {
+    type UserAttributes;
+
+    async fn create_user_and_key(
+        &self,
+        user_attributes: &Self::UserAttributes,
+        key: KeySchema,
+    ) -> CreateUserStatus;
+    async fn read_user(&self, user_id: &str) -> ReadUserStatus<Self::UserAttributes>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &str) -> ReadSessionsStatus;
     async fn delete_session_by_session_id(&self, session_id: &str) -> GeneralStatus;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
     async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
-    async fn update_user(&self, user_id: &str, user_attributes: &U) -> UpdateUserStatus;
+    async fn update_user(
+        &self,
+        user_id: &str,
+        user_attributes: &Self::UserAttributes,
+    ) -> UpdateUserStatus;
     async fn delete_session_by_user_id(&self, user_id: &str) -> GeneralStatus;
     async fn delete_key(&self, user_id: &str) -> GeneralStatus;
     async fn delete_user(&self, user_id: &str) -> GeneralStatus;
