@@ -17,31 +17,39 @@ use uuid::Uuid;
 
 const SESSION_COOKIE_NAME: &str = "auth_session";
 
-pub struct Authenticator<D> {
+pub struct Authenticator<D, F> {
     adapter: D,
+    generate_custom_user_id: Option<F>,
 }
 
-impl<D> Authenticator<D>
+impl<D, F> Authenticator<D, F>
 where
     D: DatabaseAdapter,
+    F: Fn() -> String,
 {
     pub fn new(adapter: D) -> Self {
-        Self { adapter }
+        Self {
+            adapter,
+            generate_custom_user_id: None,
+        }
+    }
+
+    pub fn generate_custom_user_id(&mut self, closure: F) {
+        self.generate_custom_user_id = Some(closure);
     }
 
     /// `attributes` represent extra user metadata that can be stored on user creation.
-    pub async fn create_user<F>(
+    pub async fn create_user(
         &self,
         provider_id: &str,
         provider_user_id: &str,
         password: Option<&str>,
         attributes: D::UserAttributes,
-        generate_custom_user_id: Option<F>,
     ) -> Result<User<D::UserAttributes>, AuthError>
     where
         F: FnOnce() -> String,
     {
-        let user_id = if let Some(closure) = generate_custom_user_id {
+        let user_id = if let Some(closure) = &self.generate_custom_user_id {
             closure()
         } else {
             Uuid::new_v4().to_string()
