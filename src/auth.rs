@@ -44,10 +44,7 @@ where
         &self,
         data: &UserData,
         attributes: D::UserAttributes,
-    ) -> Result<User<D::UserAttributes>, AuthError>
-    where
-        F: FnOnce() -> String,
-    {
+    ) -> Result<User<D::UserAttributes>, AuthError> {
         let user_id = UserId::new(if let Some(closure) = &self.generate_custom_user_id {
             closure()
         } else {
