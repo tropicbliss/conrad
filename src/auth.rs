@@ -3,7 +3,7 @@ use crate::{
         CreateKeyStatus, CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus,
         Key, KeySchema, KeyTimestamp, KeyType, ReadKeyStatus, ReadSessionStatus,
         ReadSessionsStatus, ReadUserStatus, Session, SessionData, SessionSchema, SessionState,
-        UpdateUserStatus, User, UserData, UserId, ValidationSuccess,
+        UpdateKeyStatus, UpdateUserStatus, User, UserData, UserId, ValidationSuccess,
     },
     errors::AuthError,
     utils,
@@ -55,12 +55,7 @@ where
         });
         let key_id = format!("{}:{}", data.provider_id, data.provider_user_id);
         let hashed_password = if let Some(password) = &data.password {
-            let password = password.to_string();
-            Some(
-                tokio::task::spawn_blocking(move || utils::hash_password(&password))
-                    .await
-                    .unwrap(),
-            )
+            Some(utils::hash_password(password).await)
         } else {
             None
         };
@@ -93,19 +88,27 @@ where
         }
     }
 
-    // returns user id
     pub async fn use_key(
         &self,
         provider_id: &str,
         provider_user_id: &str,
         password: Option<&str>,
-    ) -> Result<UserId, AuthError> {
+    ) -> Result<Key, AuthError> {
         let key_id = format!("{}:{}", provider_id, provider_user_id);
         let res = self.adapter.read_key(&key_id).await;
         let database_key_data = match res {
             ReadKeyStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
             ReadKeyStatus::Ok(k) => k,
             ReadKeyStatus::NoKeyFound => return Err(AuthError::InvalidKeyId),
+        };
+        let single_use = if let Some(expires) = database_key_data.expires {
+            if expires != 0 {
+                Some(expires)
+            } else {
+                None
+            }
+        } else {
+            None
         };
         let hashed_password = database_key_data.hashed_password;
         if let Some(hashed_password) = hashed_password {
@@ -116,23 +119,31 @@ where
                 if hashed_password.starts_with("$2a") {
                     return Err(AuthError::OutdatedPassword);
                 }
-                let valid_password = {
-                    let password = password.to_string();
-                    let hashed_password = hashed_password.to_string();
-                    tokio::task::spawn_blocking(move || {
-                        utils::validate_password(&password, &hashed_password)
-                    })
-                    .await
-                    .unwrap()
-                };
+                let valid_password = utils::validate_password(password, hashed_password).await;
                 if !valid_password {
                     return Err(AuthError::InvalidPassword);
+                }
+                if let Some(expires) = single_use {
+                    let within_expiration = utils::is_within_expiration(expires);
+                    if !within_expiration {
+                        return Err(AuthError::ExpiredKey);
+                    }
+                    let res = self
+                        .adapter
+                        .delete_non_primary_key(database_key_data.id)
+                        .await;
+                    match res {
+                        GeneralStatus::Ok(_) => (),
+                        GeneralStatus::DatabaseError(err) => {
+                            return Err(AuthError::DatabaseError(err))
+                        }
+                    }
                 }
             } else {
                 return Err(AuthError::InvalidPassword);
             }
         }
-        Ok(UserId::new(database_key_data.user_id.to_string()))
+        Ok(database_key_data.into())
     }
 
     pub async fn create_session(&self, user_id: &UserId) -> Result<Session, AuthError> {
@@ -214,10 +225,10 @@ where
     }
 
     pub async fn invalidate_session(&self, session_id: &str) -> Result<(), AuthError> {
-        let res = self.adapter.delete_session_by_session_id(session_id).await;
+        let res = self.adapter.delete_session(session_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-            GeneralStatus::Ok => Ok(()),
+            GeneralStatus::Ok(_) => Ok(()),
         }
     }
 
@@ -308,7 +319,7 @@ where
             })
         } else {
             self.adapter
-                .delete_session_by_session_id(&session_data.session_data.session_id)
+                .delete_session(&session_data.session_data.session_id)
                 .await;
             Err(AuthError::InvalidSessionId)
         }
@@ -365,10 +376,10 @@ where
                 Ok(session)
             }
         } else {
-            let res = self.adapter.delete_session_by_session_id(session_id).await;
+            let res = self.adapter.delete_session(session_id).await;
             match res {
                 GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-                GeneralStatus::Ok => Err(AuthError::InvalidSessionId),
+                GeneralStatus::Ok(_) => Err(AuthError::InvalidSessionId),
             }
         }
     }
@@ -411,7 +422,7 @@ where
         });
         stream::iter(dead_session_ids)
             .for_each_concurrent(3, |id| async move {
-                self.adapter.delete_session_by_session_id(&id).await;
+                self.adapter.delete_session(&id).await;
             })
             .await;
         Ok(())
@@ -434,28 +445,28 @@ where
     }
 
     pub async fn invalidate_all_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
-        let res = self.adapter.delete_session_by_user_id(user_id).await;
+        let res = self.adapter.delete_sessions_by_user_id(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-            GeneralStatus::Ok => Ok(()),
+            GeneralStatus::Ok(_) => Ok(()),
         }
     }
 
     pub async fn delete_user(&self, user_id: &UserId) -> Result<(), AuthError> {
-        let res = self.adapter.delete_session_by_user_id(user_id).await;
+        let res = self.adapter.delete_sessions_by_user_id(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
-            GeneralStatus::Ok => (),
+            GeneralStatus::Ok(_) => (),
         }
-        let res = self.adapter.delete_key(user_id).await;
+        let res = self.adapter.delete_keys(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
-            GeneralStatus::Ok => (),
+            GeneralStatus::Ok(_) => (),
         }
         let res = self.adapter.delete_user(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-            GeneralStatus::Ok => Ok(()),
+            GeneralStatus::Ok(_) => Ok(()),
         }
     }
 
@@ -466,10 +477,11 @@ where
         key_type: &KeyType,
     ) -> Result<Key, AuthError> {
         let key_id = format!("{}:{}", user_data.provider_id, user_data.provider_user_id);
-        let hashed_password = user_data
-            .password
-            .as_ref()
-            .map(|password| utils::hash_password(&password));
+        let hashed_password = if let Some(password) = &user_data.password {
+            Some(utils::hash_password(password).await)
+        } else {
+            None
+        };
         if let KeyType::SingleUse { expires_in } = key_type {
             let expires_at = Self::get_one_time_key_expiration(expires_in.get_timestamp());
             let res = self
@@ -488,13 +500,14 @@ where
                 CreateKeyStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
                 CreateKeyStatus::Ok => Ok(Key {
                     key_type: KeyType::SingleUse {
-                        expires_in: KeyTimestamp::new(expires_at),
+                        expires_in: expires_at.into(),
                     },
                     password_defined: if let Some(password) = &user_data.password {
                         !password.is_empty()
                     } else {
                         false
                     },
+                    user_id: user_id.clone(),
                 }),
             }
         } else {
@@ -519,6 +532,7 @@ where
                     } else {
                         false
                     },
+                    user_id: user_id.clone(),
                 }),
             }
         }
@@ -528,18 +542,100 @@ where
         (OffsetDateTime::now_utc() + Duration::from_millis(duration as u64 * 1000 * 1000))
             .unix_timestamp()
     }
+
+    pub async fn get_key(
+        &self,
+        provider_id: &str,
+        provider_user_id: &str,
+    ) -> Result<Key, AuthError> {
+        let key_id = format!("{}:{}", provider_id, provider_user_id);
+        let res = self.adapter.read_key(&key_id).await;
+        let database_key = match res {
+            ReadKeyStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+            ReadKeyStatus::NoKeyFound => return Err(AuthError::InvalidKeyId),
+            ReadKeyStatus::Ok(k) => k,
+        };
+        Ok(database_key.into())
+    }
+
+    pub async fn get_all_user_keys(&self, user_id: &UserId) -> Result<Vec<Key>, AuthError> {
+        let res = self.adapter.read_keys_by_user_id(user_id).await;
+        let database_data = match res {
+            GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok(k) => k,
+        };
+        Ok(database_data.into_iter().map(|d| d.into()).collect())
+    }
+
+    pub async fn update_key_password(&self, data: &UserData) -> Result<(), AuthError> {
+        let key_id = format!("{}:{}", data.provider_id, data.provider_user_id);
+        let res = if let Some(password) = &data.password {
+            let hashed_password = utils::hash_password(password).await;
+            self.adapter
+                .update_key_password(&key_id, Some(&hashed_password))
+                .await
+        } else {
+            self.adapter.update_key_password(&key_id, None).await
+        };
+        match res {
+            UpdateKeyStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            UpdateKeyStatus::KeyDoesNotExist => Err(AuthError::InvalidKeyId),
+            UpdateKeyStatus::Ok => Ok(()),
+        }
+    }
+
+    pub async fn delete_key(
+        &self,
+        provider_id: &str,
+        provider_user_id: &str,
+    ) -> Result<(), AuthError> {
+        let key_id = format!("{}:{}", provider_id, provider_user_id);
+        let res = self.adapter.delete_non_primary_key(&key_id).await;
+        match res {
+            GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            GeneralStatus::Ok(_) => Ok(()),
+        }
+    }
 }
 
 impl KeyTimestamp {
-    pub(crate) fn new(timestamp: i64) -> Self {
-        Self(timestamp)
-    }
-
     pub fn get_timestamp(&self) -> i64 {
         self.0
     }
 
     pub fn is_expired(&self) -> bool {
         !utils::is_within_expiration(self.get_timestamp())
+    }
+}
+
+impl From<i64> for KeyTimestamp {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<KeySchema<'_>> for Key {
+    fn from(database_key: KeySchema) -> Self {
+        let user_id = database_key.user_id;
+        let is_password_defined = if let Some(hashed_password) = database_key.hashed_password {
+            !hashed_password.is_empty()
+        } else {
+            false
+        };
+        if let Some(expires) = database_key.expires {
+            Self {
+                key_type: KeyType::SingleUse {
+                    expires_in: expires.into(),
+                },
+                password_defined: is_password_defined,
+                user_id: user_id.clone(),
+            }
+        } else {
+            Self {
+                key_type: KeyType::Persistent,
+                password_defined: is_password_defined,
+                user_id: user_id.clone(),
+            }
+        }
     }
 }

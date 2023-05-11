@@ -14,6 +14,7 @@ cookie = "0.16"
 futures = "0.3"
 http = "0.2"
 scrypt = "0.11"
+serde = { version = "1.0.163", features = ["derive"] }
 thiserror = "1.0"
 tokio = { version = "1.28", features = ["macros", "rt"] }
 url = "2.3"

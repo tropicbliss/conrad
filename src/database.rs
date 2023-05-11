@@ -1,8 +1,12 @@
 use async_trait::async_trait;
+use serde::{de::DeserializeOwned, Serialize};
 use std::error::Error;
 
 #[async_trait]
-pub trait DatabaseAdapter {
+pub trait DatabaseAdapter
+where
+    Self::UserAttributes: Serialize + DeserializeOwned,
+{
     type UserAttributes;
 
     async fn create_user_and_key(
@@ -13,7 +17,7 @@ pub trait DatabaseAdapter {
     async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<Self::UserAttributes>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
-    async fn delete_session_by_session_id(&self, session_id: &str) -> GeneralStatus;
+    async fn delete_session(&self, session_id: &str) -> GeneralStatus<()>;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
     async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
     async fn update_user(
@@ -21,10 +25,17 @@ pub trait DatabaseAdapter {
         user_id: &UserId,
         user_attributes: &Self::UserAttributes,
     ) -> UpdateUserStatus;
-    async fn delete_session_by_user_id(&self, user_id: &UserId) -> GeneralStatus;
-    async fn delete_key(&self, user_id: &UserId) -> GeneralStatus;
-    async fn delete_user(&self, user_id: &UserId) -> GeneralStatus;
+    async fn delete_sessions_by_user_id(&self, user_id: &UserId) -> GeneralStatus<()>;
+    async fn delete_keys(&self, user_id: &UserId) -> GeneralStatus<()>;
+    async fn delete_user(&self, user_id: &UserId) -> GeneralStatus<()>;
     async fn create_key(&self, key: KeySchema) -> CreateKeyStatus;
+    async fn delete_non_primary_key(&self, key_id: &str) -> GeneralStatus<()>;
+    async fn read_keys_by_user_id(&self, user_id: &UserId) -> GeneralStatus<Vec<KeySchema>>;
+    async fn update_key_password(
+        &self,
+        key_id: &str,
+        hashed_password: Option<&str>,
+    ) -> UpdateKeyStatus;
 }
 
 #[derive(Clone, Debug)]
@@ -65,8 +76,8 @@ pub enum ReadSessionsStatus<'a> {
 }
 
 #[derive(Debug)]
-pub enum GeneralStatus {
-    Ok,
+pub enum GeneralStatus<T> {
+    Ok(T),
     DatabaseError(Box<dyn Error>),
 }
 
@@ -97,6 +108,13 @@ pub enum CreateKeyStatus {
     DatabaseError(Box<dyn Error>),
     UserDoesNotExist,
     KeyAlreadyExists,
+}
+
+#[derive(Debug)]
+pub enum UpdateKeyStatus {
+    Ok,
+    DatabaseError(Box<dyn Error>),
+    KeyDoesNotExist,
 }
 
 #[derive(Clone, Debug)]
@@ -159,6 +177,7 @@ pub struct KeyTimestamp(pub(crate) i64);
 pub struct Key {
     pub key_type: KeyType,
     pub password_defined: bool,
+    pub user_id: UserId,
 }
 
 #[derive(Clone, Debug)]

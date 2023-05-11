@@ -19,4 +19,6 @@ pub enum AuthError {
     OutdatedPassword,
     #[error("duplicate key id")]
     DuplicateKeyId,
+    #[error("expired key")]
+    ExpiredKey,
 }
