@@ -1,8 +1,9 @@
 use crate::{
     database::{
-        CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus, KeySchema,
-        ReadKeyStatus, ReadSessionStatus, ReadSessionsStatus, ReadUserStatus, Session, SessionData,
-        SessionSchema, SessionState, UpdateUserStatus, User, UserMetadata, ValidationSuccess,
+        CreateKeyStatus, CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus,
+        Key, KeySchema, KeyTimestamp, KeyType, ReadKeyStatus, ReadSessionStatus,
+        ReadSessionsStatus, ReadUserStatus, Session, SessionData, SessionSchema, SessionState,
+        UpdateUserStatus, User, UserData, UserId, ValidationSuccess,
     },
     errors::AuthError,
     utils,
@@ -41,21 +42,19 @@ where
     /// `attributes` represent extra user metadata that can be stored on user creation.
     pub async fn create_user(
         &self,
-        provider_id: &str,
-        provider_user_id: &str,
-        password: Option<&str>,
+        data: &UserData,
         attributes: D::UserAttributes,
     ) -> Result<User<D::UserAttributes>, AuthError>
     where
         F: FnOnce() -> String,
     {
-        let user_id = if let Some(closure) = &self.generate_custom_user_id {
+        let user_id = UserId::new(if let Some(closure) = &self.generate_custom_user_id {
             closure()
         } else {
             Uuid::new_v4().to_string()
-        };
-        let key_id = format!("{}:{}", provider_id, provider_user_id);
-        let hashed_password = if let Some(password) = password {
+        });
+        let key_id = format!("{}:{}", data.provider_id, data.provider_user_id);
+        let hashed_password = if let Some(password) = &data.password {
             let password = password.to_string();
             Some(
                 tokio::task::spawn_blocking(move || utils::hash_password(&password))
@@ -73,12 +72,20 @@ where
                     id: &key_id,
                     user_id: &user_id,
                     hashed_password: hashed_password.as_deref(),
+                    primary_key: true,
+                    expires: None,
                 },
             )
             .await;
         match res {
             CreateUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-            CreateUserStatus::UserAlreadyExists => self.get_user(&user_id).await,
+            CreateUserStatus::UserAlreadyExists => {
+                let attributes = self.get_user(&user_id).await?;
+                Ok(User {
+                    user_id,
+                    user_attributes: attributes,
+                })
+            }
             CreateUserStatus::Ok => Ok(User {
                 user_id,
                 user_attributes: attributes,
@@ -86,12 +93,13 @@ where
         }
     }
 
+    // returns user id
     pub async fn use_key(
         &self,
         provider_id: &str,
         provider_user_id: &str,
         password: Option<&str>,
-    ) -> Result<UserMetadata, AuthError> {
+    ) -> Result<UserId, AuthError> {
         let key_id = format!("{}:{}", provider_id, provider_user_id);
         let res = self.adapter.read_key(&key_id).await;
         let database_key_data = match res {
@@ -124,16 +132,10 @@ where
                 return Err(AuthError::InvalidPassword);
             }
         }
-        let (provider_id, provider_user_id) = database_key_data.id.split_once(':').unwrap();
-        let user_id = database_key_data.user_id;
-        Ok(UserMetadata {
-            provider_id: provider_id.to_string(),
-            provider_user_id: provider_user_id.to_string(),
-            user_id: user_id.to_string(),
-        })
+        Ok(UserId::new(database_key_data.user_id.to_string()))
     }
 
-    pub async fn create_session(&self, user_id: &str) -> Result<Session, AuthError> {
+    pub async fn create_session(&self, user_id: &UserId) -> Result<Session, AuthError> {
         let session_info = Self::generate_session_id();
         let session_schema = SessionSchema {
             session_data: &session_info,
@@ -353,9 +355,10 @@ where
         let session = Self::validate_database_session(database_session.session_data);
         if let Some(session) = session {
             if renew {
+                let user_id = database_session.user_id;
                 let (renewed_session, _) = join!(
-                    self.create_session(database_session.user_id),
-                    self.delete_dead_user_sessions(database_session.user_id)
+                    self.create_session(&user_id),
+                    self.delete_dead_user_sessions(&user_id)
                 );
                 Ok(renewed_session?)
             } else {
@@ -370,11 +373,11 @@ where
         }
     }
 
-    pub async fn get_user(&self, user_id: &str) -> Result<User<D::UserAttributes>, AuthError> {
+    pub async fn get_user(&self, user_id: &UserId) -> Result<D::UserAttributes, AuthError> {
         let res = self.adapter.read_user(user_id).await;
         match res {
             ReadUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-            ReadUserStatus::Ok(att) => Ok(att),
+            ReadUserStatus::Ok(att) => Ok(att.user_attributes),
             ReadUserStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
         }
     }
@@ -393,7 +396,7 @@ where
         }
     }
 
-    async fn delete_dead_user_sessions(&self, user_id: &str) -> Result<(), AuthError> {
+    async fn delete_dead_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
         let res = self.adapter.read_sessions(user_id).await;
         let database_sessions = match res {
             ReadSessionsStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
@@ -416,22 +419,21 @@ where
 
     pub async fn update_user_attributes(
         &self,
-        user_id: &str,
+        user_id: &UserId,
         attributes: &D::UserAttributes,
-    ) -> Result<User<D::UserAttributes>, AuthError> {
+    ) -> Result<(), AuthError> {
         let (res, _) = join!(
             self.adapter.update_user(user_id, attributes),
             self.delete_dead_user_sessions(user_id)
         );
         match res {
-            UpdateUserStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
-            UpdateUserStatus::UserDoesNotExist => return Err(AuthError::InvalidUserId),
-            UpdateUserStatus::Ok => (),
+            UpdateUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+            UpdateUserStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
+            UpdateUserStatus::Ok => Ok(()),
         }
-        self.get_user(user_id).await
     }
 
-    pub async fn invalidate_all_user_sessions(&self, user_id: &str) -> Result<(), AuthError> {
+    pub async fn invalidate_all_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
         let res = self.adapter.delete_session_by_user_id(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -439,7 +441,7 @@ where
         }
     }
 
-    pub async fn delete_user(&self, user_id: &str) -> Result<(), AuthError> {
+    pub async fn delete_user(&self, user_id: &UserId) -> Result<(), AuthError> {
         let res = self.adapter.delete_session_by_user_id(user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
@@ -455,5 +457,89 @@ where
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
             GeneralStatus::Ok => Ok(()),
         }
+    }
+
+    pub async fn create_key(
+        &self,
+        user_id: &UserId,
+        user_data: &UserData,
+        key_type: &KeyType,
+    ) -> Result<Key, AuthError> {
+        let key_id = format!("{}:{}", user_data.provider_id, user_data.provider_user_id);
+        let hashed_password = user_data
+            .password
+            .as_ref()
+            .map(|password| utils::hash_password(&password));
+        if let KeyType::SingleUse { expires_in } = key_type {
+            let expires_at = Self::get_one_time_key_expiration(expires_in.get_timestamp());
+            let res = self
+                .adapter
+                .create_key(KeySchema {
+                    id: &key_id,
+                    hashed_password: hashed_password.as_deref(),
+                    user_id,
+                    primary_key: false,
+                    expires: Some(expires_at),
+                })
+                .await;
+            match res {
+                CreateKeyStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+                CreateKeyStatus::KeyAlreadyExists => Err(AuthError::DuplicateKeyId),
+                CreateKeyStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
+                CreateKeyStatus::Ok => Ok(Key {
+                    key_type: KeyType::SingleUse {
+                        expires_in: KeyTimestamp::new(expires_at),
+                    },
+                    password_defined: if let Some(password) = &user_data.password {
+                        !password.is_empty()
+                    } else {
+                        false
+                    },
+                }),
+            }
+        } else {
+            let res = self
+                .adapter
+                .create_key(KeySchema {
+                    id: &key_id,
+                    hashed_password: hashed_password.as_deref(),
+                    user_id,
+                    primary_key: false,
+                    expires: None,
+                })
+                .await;
+            match res {
+                CreateKeyStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+                CreateKeyStatus::KeyAlreadyExists => Err(AuthError::DuplicateKeyId),
+                CreateKeyStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
+                CreateKeyStatus::Ok => Ok(Key {
+                    key_type: KeyType::Persistent,
+                    password_defined: if let Some(password) = &user_data.password {
+                        !password.is_empty()
+                    } else {
+                        false
+                    },
+                }),
+            }
+        }
+    }
+
+    fn get_one_time_key_expiration(duration: i64) -> i64 {
+        (OffsetDateTime::now_utc() + Duration::from_millis(duration as u64 * 1000 * 1000))
+            .unix_timestamp()
+    }
+}
+
+impl KeyTimestamp {
+    pub(crate) fn new(timestamp: i64) -> Self {
+        Self(timestamp)
+    }
+
+    pub fn get_timestamp(&self) -> i64 {
+        self.0
+    }
+
+    pub fn is_expired(&self) -> bool {
+        !utils::is_within_expiration(self.get_timestamp())
     }
 }

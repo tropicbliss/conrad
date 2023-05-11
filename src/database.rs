@@ -10,28 +10,30 @@ pub trait DatabaseAdapter {
         user_attributes: &Self::UserAttributes,
         key: KeySchema,
     ) -> CreateUserStatus;
-    async fn read_user(&self, user_id: &str) -> ReadUserStatus<Self::UserAttributes>;
+    async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<Self::UserAttributes>;
     async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
-    async fn read_sessions(&self, user_id: &str) -> ReadSessionsStatus;
+    async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
     async fn delete_session_by_session_id(&self, session_id: &str) -> GeneralStatus;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
     async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
     async fn update_user(
         &self,
-        user_id: &str,
+        user_id: &UserId,
         user_attributes: &Self::UserAttributes,
     ) -> UpdateUserStatus;
-    async fn delete_session_by_user_id(&self, user_id: &str) -> GeneralStatus;
-    async fn delete_key(&self, user_id: &str) -> GeneralStatus;
-    async fn delete_user(&self, user_id: &str) -> GeneralStatus;
+    async fn delete_session_by_user_id(&self, user_id: &UserId) -> GeneralStatus;
+    async fn delete_key(&self, user_id: &UserId) -> GeneralStatus;
+    async fn delete_user(&self, user_id: &UserId) -> GeneralStatus;
+    async fn create_key(&self, key: KeySchema) -> CreateKeyStatus;
 }
 
 #[derive(Clone, Debug)]
 pub struct KeySchema<'a> {
     pub id: &'a str,
     pub hashed_password: Option<&'a str>,
-    pub user_id: &'a str,
-    // check the use_key() method if expires is added back in
+    pub user_id: &'a UserId,
+    pub primary_key: bool,
+    pub expires: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -89,9 +91,17 @@ pub enum UpdateUserStatus {
     DatabaseError(Box<dyn Error>),
 }
 
+#[derive(Debug)]
+pub enum CreateKeyStatus {
+    Ok,
+    DatabaseError(Box<dyn Error>),
+    UserDoesNotExist,
+    KeyAlreadyExists,
+}
+
 #[derive(Clone, Debug)]
 pub struct User<U> {
-    pub user_id: String,
+    pub user_id: UserId,
     pub user_attributes: U,
 }
 
@@ -114,7 +124,7 @@ pub struct SessionData {
 #[derive(Clone, Debug)]
 pub struct SessionSchema<'a> {
     pub session_data: &'a SessionData,
-    pub user_id: &'a str,
+    pub user_id: &'a UserId,
 }
 
 #[derive(Clone, Debug)]
@@ -130,8 +140,38 @@ pub enum SessionState {
 }
 
 #[derive(Clone, Debug)]
-pub struct UserMetadata {
+pub struct UserData {
     pub provider_id: String,
     pub provider_user_id: String,
-    pub user_id: String,
+    pub password: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub enum KeyType {
+    Persistent,
+    SingleUse { expires_in: KeyTimestamp },
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct KeyTimestamp(pub(crate) i64);
+
+#[derive(Clone, Debug)]
+pub struct Key {
+    pub key_type: KeyType,
+    pub password_defined: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct UserId(String);
+
+impl UserId {
+    pub fn new(user_id: String) -> Self {
+        Self(user_id)
+    }
+}
+
+impl ToString for UserId {
+    fn to_string(&self) -> String {
+        self.0.clone()
+    }
 }
