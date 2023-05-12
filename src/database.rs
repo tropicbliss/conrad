@@ -170,6 +170,30 @@ pub enum KeyType {
     SingleUse { expires_in: KeyTimestamp },
 }
 
+pub struct SessionId<'a>(&'a str);
+
+impl<'a> SessionId<'a> {
+    pub fn new(session_id: &'a str) -> Self {
+        Self(session_id)
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0
+    }
+}
+
+impl<'a> ToString for SessionId<'a> {
+    fn to_string(&self) -> String {
+        self.0.to_string()
+    }
+}
+
+impl<'a> From<&'a str> for SessionId<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::new(value)
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct KeyTimestamp(pub(crate) i64);
 

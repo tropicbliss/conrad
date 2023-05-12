@@ -2,14 +2,14 @@ use crate::{
     database::{
         CreateKeyStatus, CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus,
         Key, KeySchema, KeyTimestamp, KeyType, ReadKeyStatus, ReadSessionStatus,
-        ReadSessionsStatus, ReadUserStatus, Session, SessionData, SessionSchema, SessionState,
-        UpdateKeyStatus, UpdateUserStatus, User, UserData, UserId, ValidationSuccess,
+        ReadSessionsStatus, ReadUserStatus, Session, SessionData, SessionId, SessionSchema,
+        SessionState, UpdateKeyStatus, UpdateUserStatus, User, UserData, UserId, ValidationSuccess,
     },
     errors::AuthError,
     utils,
 };
 use cookie::{time::OffsetDateTime, Cookie, CookieJar};
-use futures::{stream, StreamExt};
+use futures::{stream, StreamExt, TryStreamExt};
 use http::{HeaderMap, Method};
 use std::time::Duration;
 use tokio::join;
@@ -21,22 +21,28 @@ const SESSION_COOKIE_NAME: &str = "auth_session";
 pub struct Authenticator<D, F> {
     adapter: D,
     generate_custom_user_id: Option<F>,
+    auto_database_cleanup: bool,
 }
 
 impl<D, F> Authenticator<D, F>
 where
     D: DatabaseAdapter,
-    F: Fn() -> String,
+    F: Fn() -> UserId,
 {
     pub fn new(adapter: D) -> Self {
         Self {
             adapter,
             generate_custom_user_id: None,
+            auto_database_cleanup: true,
         }
     }
 
     pub fn generate_custom_user_id(&mut self, closure: F) {
         self.generate_custom_user_id = Some(closure);
+    }
+
+    pub fn auto_database_cleanup(&mut self, enable: bool) {
+        self.auto_database_cleanup = enable;
     }
 
     /// `attributes` represent extra user metadata that can be stored on user creation.
@@ -45,11 +51,11 @@ where
         data: &UserData,
         attributes: D::UserAttributes,
     ) -> Result<User<D::UserAttributes>, AuthError> {
-        let user_id = UserId::new(if let Some(closure) = &self.generate_custom_user_id {
+        let user_id = if let Some(closure) = &self.generate_custom_user_id {
             closure()
         } else {
-            Uuid::new_v4().to_string()
-        });
+            UserId::new(Uuid::new_v4().to_string())
+        };
         let key_id = format!("{}:{}", data.provider_id, data.provider_user_id);
         let hashed_password = if let Some(password) = &data.password {
             Some(utils::hash_password(password).await)
@@ -149,10 +155,15 @@ where
             session_data: &session_info,
             user_id: &user_id,
         };
-        let (res, _) = join!(
-            self.adapter.create_session(session_schema.clone()),
-            self.delete_dead_user_sessions(user_id)
-        );
+        let res = if self.auto_database_cleanup {
+            let (res, _) = join!(
+                self.adapter.create_session(session_schema.clone()),
+                self.delete_dead_user_sessions(user_id)
+            );
+            res
+        } else {
+            self.adapter.create_session(session_schema.clone()).await
+        };
         match res {
             CreateSessionStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
             CreateSessionStatus::DuplicateSessionId => Err(AuthError::DuplicateSessionId),
@@ -167,13 +178,13 @@ where
         }
     }
 
-    fn parse_request_headers<'c>(
+    pub fn parse_request_headers<'c>(
         cookies: &'c CookieJar,
         method: &Method,
         headers: &HeaderMap,
         origin_url: &Url,
-    ) -> Option<&'c str> {
-        let session_id = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value());
+    ) -> Option<SessionId<'c>> {
+        let session_id = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value().into());
         let csrf_check = method != Method::GET && method != Method::HEAD;
         let mut error = false;
         let request_origin = headers.get("origin");
@@ -210,7 +221,7 @@ where
         let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
         match session_id {
             Some(session_id) => {
-                let session = self.validate_session(session_id).await?;
+                let session = self.validate_session(session_id.as_str()).await?;
                 Self::set_session(cookies, Some(&session));
                 Ok(Some(session))
             }
@@ -239,7 +250,7 @@ where
         let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
         match session_id {
             Some(session_id) => {
-                let info = self.validate_session_user(session_id).await?;
+                let info = self.validate_session_user(session_id.as_str()).await?;
                 Self::set_session(cookies, Some(&info.session));
                 Ok(Some(info))
             }
@@ -251,7 +262,12 @@ where
     }
 
     pub fn set_session(cookies: &mut CookieJar, session: Option<&Session>) {
-        let cookie = if let Some(session) = session {
+        let cookie = Self::create_session_cookie(session);
+        cookies.add(cookie);
+    }
+
+    pub fn create_session_cookie<'c>(session: Option<&Session>) -> Cookie<'c> {
+        if let Some(session) = session {
             Cookie::build(SESSION_COOKIE_NAME, session.session_id.clone())
                 .same_site(cookie::SameSite::Lax)
                 .path("/")
@@ -269,8 +285,7 @@ where
                 .expires(OffsetDateTime::UNIX_EPOCH)
                 .secure(true)
                 .finish()
-        };
-        cookies.add(cookie);
+        }
     }
 
     async fn validate_session_user(
@@ -315,9 +330,16 @@ where
                 user: database_user,
             })
         } else {
-            self.adapter
-                .delete_session(&session_data.session_data.session_id)
-                .await;
+            if self.auto_database_cleanup {
+                let res = self
+                    .adapter
+                    .delete_session(&session_data.session_data.session_id)
+                    .await;
+                match res {
+                    GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+                    GeneralStatus::Ok(_) => (),
+                }
+            }
             Err(AuthError::InvalidSessionId)
         }
     }
@@ -364,20 +386,28 @@ where
         if let Some(session) = session {
             if renew {
                 let user_id = database_session.user_id;
-                let (renewed_session, _) = join!(
-                    self.create_session(&user_id),
-                    self.delete_dead_user_sessions(&user_id)
-                );
+                let renewed_session = if self.auto_database_cleanup {
+                    let (renewed_session, _) = join!(
+                        self.create_session(&user_id),
+                        self.delete_dead_user_sessions(&user_id)
+                    );
+                    renewed_session
+                } else {
+                    self.create_session(&user_id).await
+                };
                 Ok(renewed_session?)
             } else {
                 Ok(session)
             }
         } else {
-            let res = self.adapter.delete_session(session_id).await;
-            match res {
-                GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
-                GeneralStatus::Ok(_) => Err(AuthError::InvalidSessionId),
+            if self.auto_database_cleanup {
+                let res = self.adapter.delete_session(session_id).await;
+                match res {
+                    GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
+                    GeneralStatus::Ok(_) => (),
+                }
             }
+            Err(AuthError::InvalidSessionId)
         }
     }
 
@@ -418,10 +448,16 @@ where
             }
         });
         stream::iter(dead_session_ids)
-            .for_each_concurrent(3, |id| async move {
-                self.adapter.delete_session(&id).await;
+            .map(|id| async move {
+                let res = self.adapter.delete_session(&id).await;
+                match res {
+                    GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
+                    GeneralStatus::Ok(_) => Ok(()),
+                }
             })
-            .await;
+            .buffer_unordered(3)
+            .try_collect()
+            .await?;
         Ok(())
     }
 
@@ -430,10 +466,15 @@ where
         user_id: &UserId,
         attributes: &D::UserAttributes,
     ) -> Result<(), AuthError> {
-        let (res, _) = join!(
-            self.adapter.update_user(user_id, attributes),
-            self.delete_dead_user_sessions(user_id)
-        );
+        let res = if self.auto_database_cleanup {
+            let (res, _) = join!(
+                self.adapter.update_user(user_id, attributes),
+                self.delete_dead_user_sessions(user_id)
+            );
+            res
+        } else {
+            self.adapter.update_user(user_id, attributes).await
+        };
         match res {
             UpdateUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
             UpdateUserStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
