@@ -48,7 +48,7 @@ where
     /// `attributes` represent extra user metadata that can be stored on user creation.
     pub async fn create_user(
         &self,
-        data: &UserData,
+        data: UserData,
         attributes: D::UserAttributes,
     ) -> Result<User<D::UserAttributes>, AuthError> {
         let user_id = if let Some(closure) = &self.generate_custom_user_id {
@@ -97,22 +97,14 @@ where
         provider_user_id: &str,
         password: Option<&str>,
     ) -> Result<Key, AuthError> {
-        let key_id = format!("{}:{}", provider_id, provider_user_id);
+        let key_id = format!("{provider_id}:{provider_user_id}");
         let res = self.adapter.read_key(&key_id).await;
         let database_key_data = match res {
             ReadKeyStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
             ReadKeyStatus::Ok(k) => k,
             ReadKeyStatus::NoKeyFound => return Err(AuthError::InvalidKeyId),
         };
-        let single_use = if let Some(expires) = database_key_data.expires {
-            if expires != 0 {
-                Some(expires)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let single_use = database_key_data.expires.filter(|&expires| expires != 0);
         let hashed_password = database_key_data.hashed_password;
         if let Some(hashed_password) = hashed_password {
             if let Some(password) = password {
@@ -153,7 +145,7 @@ where
         let session_info = Self::generate_session_id();
         let session_schema = SessionSchema {
             session_data: &session_info,
-            user_id: &user_id,
+            user_id,
         };
         let res = if self.auto_database_cleanup {
             let (res, _) = join!(
@@ -178,6 +170,7 @@ where
         }
     }
 
+    #[must_use]
     pub fn parse_request_headers<'c>(
         cookies: &'c CookieJar,
         method: &Method,
@@ -219,16 +212,13 @@ where
         origin_url: &Url,
     ) -> Result<Option<Session>, AuthError> {
         let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
-        match session_id {
-            Some(session_id) => {
-                let session = self.validate_session(session_id.as_str()).await?;
-                Self::set_session(cookies, Some(&session));
-                Ok(Some(session))
-            }
-            _ => {
-                Self::set_session(cookies, None);
-                Ok(None)
-            }
+        if let Some(session_id) = session_id {
+            let session = self.validate_session(session_id.as_str()).await?;
+            Self::set_session(cookies, Some(&session));
+            Ok(Some(session))
+        } else {
+            Self::set_session(cookies, None);
+            Ok(None)
         }
     }
 
@@ -248,16 +238,13 @@ where
         origin_url: &Url,
     ) -> Result<Option<ValidationSuccess<D::UserAttributes>>, AuthError> {
         let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
-        match session_id {
-            Some(session_id) => {
-                let info = self.validate_session_user(session_id.as_str()).await?;
-                Self::set_session(cookies, Some(&info.session));
-                Ok(Some(info))
-            }
-            None => {
-                Self::set_session(cookies, None);
-                Ok(None)
-            }
+        if let Some(session_id) = session_id {
+            let info = self.validate_session_user(session_id.as_str()).await?;
+            Self::set_session(cookies, Some(&info.session));
+            Ok(Some(info))
+        } else {
+            Self::set_session(cookies, None);
+            Ok(None)
         }
     }
 
@@ -266,6 +253,7 @@ where
         cookies.add(cookie);
     }
 
+    #[must_use]
     pub fn create_session_cookie<'c>(session: Option<&Session>) -> Cookie<'c> {
         if let Some(session) = session {
             Cookie::build(SESSION_COOKIE_NAME, session.session_id.clone())
@@ -388,12 +376,12 @@ where
                 let user_id = database_session.user_id;
                 let renewed_session = if self.auto_database_cleanup {
                     let (renewed_session, _) = join!(
-                        self.create_session(&user_id),
-                        self.delete_dead_user_sessions(&user_id)
+                        self.create_session(user_id),
+                        self.delete_dead_user_sessions(user_id)
                     );
                     renewed_session
                 } else {
-                    self.create_session(&user_id).await
+                    self.create_session(user_id).await
                 };
                 Ok(renewed_session?)
             } else {
@@ -441,15 +429,15 @@ where
             ReadSessionsStatus::Ok(s) => s,
         };
         let dead_session_ids = database_sessions.into_iter().filter_map(|s| {
-            if !utils::is_within_expiration(s.session_data.idle_period_expires_at) {
-                Some(&s.session_data.session_id)
-            } else {
+            if utils::is_within_expiration(s.session_data.idle_period_expires_at) {
                 None
+            } else {
+                Some(&s.session_data.session_id)
             }
         });
         stream::iter(dead_session_ids)
             .map(|id| async move {
-                let res = self.adapter.delete_session(&id).await;
+                let res = self.adapter.delete_session(id).await;
                 match res {
                     GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
                     GeneralStatus::Ok(_) => Ok(()),
@@ -464,16 +452,16 @@ where
     pub async fn update_user_attributes(
         &self,
         user_id: &UserId,
-        attributes: &D::UserAttributes,
+        attributes: D::UserAttributes,
     ) -> Result<(), AuthError> {
         let res = if self.auto_database_cleanup {
             let (res, _) = join!(
-                self.adapter.update_user(user_id, attributes),
+                self.adapter.update_user(user_id, &attributes),
                 self.delete_dead_user_sessions(user_id)
             );
             res
         } else {
-            self.adapter.update_user(user_id, attributes).await
+            self.adapter.update_user(user_id, &attributes).await
         };
         match res {
             UpdateUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -490,18 +478,18 @@ where
         }
     }
 
-    pub async fn delete_user(&self, user_id: &UserId) -> Result<(), AuthError> {
-        let res = self.adapter.delete_sessions_by_user_id(user_id).await;
+    pub async fn delete_user(&self, user_id: UserId) -> Result<(), AuthError> {
+        let res = self.adapter.delete_sessions_by_user_id(&user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
             GeneralStatus::Ok(_) => (),
         }
-        let res = self.adapter.delete_keys(user_id).await;
+        let res = self.adapter.delete_keys(&user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
             GeneralStatus::Ok(_) => (),
         }
-        let res = self.adapter.delete_user(user_id).await;
+        let res = self.adapter.delete_user(&user_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
             GeneralStatus::Ok(_) => Ok(()),
@@ -577,6 +565,7 @@ where
     }
 
     fn get_one_time_key_expiration(duration: i64) -> i64 {
+        assert!(duration >= 0, "duration cannot be negative");
         (OffsetDateTime::now_utc() + Duration::from_millis(duration as u64 * 1000 * 1000))
             .unix_timestamp()
     }
@@ -586,7 +575,7 @@ where
         provider_id: &str,
         provider_user_id: &str,
     ) -> Result<Key, AuthError> {
-        let key_id = format!("{}:{}", provider_id, provider_user_id);
+        let key_id = format!("{provider_id}:{provider_user_id}");
         let res = self.adapter.read_key(&key_id).await;
         let database_key = match res {
             ReadKeyStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
@@ -602,7 +591,10 @@ where
             GeneralStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
             GeneralStatus::Ok(k) => k,
         };
-        Ok(database_data.into_iter().map(|d| d.into()).collect())
+        Ok(database_data
+            .into_iter()
+            .map(std::convert::Into::into)
+            .collect())
     }
 
     pub async fn update_key_password(&self, data: &UserData) -> Result<(), AuthError> {
@@ -627,7 +619,7 @@ where
         provider_id: &str,
         provider_user_id: &str,
     ) -> Result<(), AuthError> {
-        let key_id = format!("{}:{}", provider_id, provider_user_id);
+        let key_id = format!("{provider_id}:{provider_user_id}");
         let res = self.adapter.delete_non_primary_key(&key_id).await;
         match res {
             GeneralStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -637,10 +629,12 @@ where
 }
 
 impl KeyTimestamp {
+    #[must_use]
     pub fn get_timestamp(&self) -> i64 {
         self.0
     }
 
+    #[must_use]
     pub fn is_expired(&self) -> bool {
         !utils::is_within_expiration(self.get_timestamp())
     }
