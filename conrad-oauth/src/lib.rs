@@ -1,14 +1,53 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+pub mod providers;
+
+use conrad_core::auth::Authenticator;
+use cookie::CookieJar;
+use url::Url;
+
+pub struct OAuthConfig {
+    client_id: &'static str,
+    client_secret: &'static str,
+    scope: Vec<&'static str>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl OAuthConfig {
+    pub fn new(
+        client_id: &'static str,
+        client_secret: &'static str,
+        scope: Vec<&'static str>,
+    ) -> Self {
+        Self {
+            client_id,
+            client_secret,
+            scope,
+        }
+    }
+}
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+pub trait OAuthProvider {
+    type Config;
+
+    fn new<D>(auth: Authenticator<D>, config: Self::Config) -> Self
+    where
+        D: Clone;
+    fn get_authorization_url(&self, cookies: &mut CookieJar) -> Url;
+}
+
+#[doc(hidden)]
+pub trait IntoProvider {
+    fn to_provider<P>(&self, config: P::Config) -> P
+    where
+        P: OAuthProvider;
+}
+
+impl<D> IntoProvider for Authenticator<D>
+where
+    D: Clone,
+{
+    fn to_provider<P>(&self, config: P::Config) -> P
+    where
+        P: OAuthProvider,
+    {
+        P::new(self.clone(), config)
     }
 }

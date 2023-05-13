@@ -1,5 +1,2 @@
 [workspace]
-members = [
-    "conrad",
-    "conrad-oauth"
-]
+members = ["conrad", "conrad-*"]

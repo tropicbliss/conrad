@@ -3,6 +3,7 @@ name = "conrad-oauth"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+conrad-core = { path = "../conrad-core", version = "0.1.0" }
+cookie = "0.17.0"
+url = "2.3.1"
