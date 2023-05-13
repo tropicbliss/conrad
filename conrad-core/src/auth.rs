@@ -59,6 +59,7 @@ where
     }
 }
 
+// Authenticator should be kept stateless to uphold the guarantees of IntoProvider cloning this
 #[derive(Clone)]
 pub struct Authenticator<D>
 where
