@@ -1,21 +1,5 @@
-[package]
-name = "conrad"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-description = "A name-squatted crate requested by someone who goes by the name of Conrad on the Rust Community Discord server"
-readme = "README.md"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-async-trait = "0.1"
-cookie = "0.16"
-futures = "0.3"
-http = "0.2"
-scrypt = "0.11"
-serde = { version = "1.0.163", features = ["derive"] }
-thiserror = "1.0"
-tokio = { version = "1.28", features = ["macros", "rt"] }
-url = "2.3"
-uuid = { version = "1.3", features = ["v4"] }
+[workspace]
+members = [
+    "conrad",
+    "conrad-oauth"
+]
