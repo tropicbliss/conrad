@@ -5,8 +5,7 @@ use scrypt::{
 };
 
 /// Hash password using scrypt
-pub async fn hash_password(password: &str) -> String {
-    let password = password.to_string();
+pub async fn hash_password(password: String) -> String {
     tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
         Scrypt
@@ -18,9 +17,7 @@ pub async fn hash_password(password: &str) -> String {
     .unwrap()
 }
 
-pub async fn validate_password(password: &str, hashed_password: &str) -> bool {
-    let password = password.to_string();
-    let hashed_password = hashed_password.to_string();
+pub async fn validate_password(password: String, hashed_password: String) -> bool {
     tokio::task::spawn_blocking(move || {
         let parsed_hash = PasswordHash::new(&hashed_password).unwrap();
         Scrypt

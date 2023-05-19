@@ -12,10 +12,10 @@ where
     async fn create_user_and_key(
         &self,
         user_attributes: &Self::UserAttributes,
-        key: KeySchema,
+        key: &KeySchema,
     ) -> CreateUserStatus;
     async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<Self::UserAttributes>;
-    async fn create_session(&self, session_data: SessionSchema) -> CreateSessionStatus;
+    async fn create_session(&self, session_data: &SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
     async fn delete_session(&self, session_id: &str) -> GeneralStatus<()>;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
@@ -28,7 +28,7 @@ where
     async fn delete_sessions_by_user_id(&self, user_id: &UserId) -> GeneralStatus<()>;
     async fn delete_keys(&self, user_id: &UserId) -> GeneralStatus<()>;
     async fn delete_user(&self, user_id: &UserId) -> GeneralStatus<()>;
-    async fn create_key(&self, key: KeySchema) -> CreateKeyStatus;
+    async fn create_key(&self, key: &KeySchema) -> CreateKeyStatus;
     async fn delete_non_primary_key(&self, key_id: &str) -> GeneralStatus<()>;
     async fn read_keys_by_user_id(&self, user_id: &UserId) -> GeneralStatus<Vec<KeySchema>>;
     async fn update_key_password(
@@ -39,10 +39,10 @@ where
 }
 
 #[derive(Clone, Debug)]
-pub struct KeySchema<'a> {
-    pub id: &'a str,
-    pub hashed_password: Option<&'a str>,
-    pub user_id: &'a UserId,
+pub struct KeySchema {
+    pub id: String,
+    pub hashed_password: Option<String>,
+    pub user_id: UserId,
     pub primary_key: bool,
     pub expires: Option<i64>,
 }
@@ -70,8 +70,8 @@ pub enum CreateSessionStatus {
 }
 
 #[derive(Debug)]
-pub enum ReadSessionsStatus<'a> {
-    Ok(Vec<SessionSchema<'a>>),
+pub enum ReadSessionsStatus {
+    Ok(Vec<SessionSchema>),
     DatabaseError(Box<dyn Error>),
 }
 
@@ -82,15 +82,15 @@ pub enum GeneralStatus<T> {
 }
 
 #[derive(Debug)]
-pub enum ReadSessionStatus<'a> {
-    Ok(SessionSchema<'a>),
+pub enum ReadSessionStatus {
+    Ok(SessionSchema),
     DatabaseError(Box<dyn Error>),
     SessionNotFound,
 }
 
 #[derive(Debug)]
-pub enum ReadKeyStatus<'a> {
-    Ok(KeySchema<'a>),
+pub enum ReadKeyStatus {
+    Ok(KeySchema),
     DatabaseError(Box<dyn Error>),
     NoKeyFound,
 }
@@ -140,9 +140,9 @@ pub struct SessionData {
 }
 
 #[derive(Clone, Debug)]
-pub struct SessionSchema<'a> {
-    pub session_data: &'a SessionData,
-    pub user_id: &'a UserId,
+pub struct SessionSchema {
+    pub session_data: SessionData,
+    pub user_id: UserId,
 }
 
 #[derive(Clone, Debug)]
@@ -165,14 +165,11 @@ pub struct UserData {
 }
 
 impl UserData {
-    pub fn new<T>(provider_id: T, provider_user_id: T, password: Option<T>) -> Self
-    where
-        T: AsRef<str>,
-    {
+    pub fn new(provider_id: String, provider_user_id: String, password: Option<String>) -> Self {
         Self {
-            provider_id: provider_id.as_ref().to_string(),
-            provider_user_id: provider_user_id.as_ref().to_string(),
-            password: password.map(|p| p.as_ref().to_string()),
+            provider_id,
+            provider_user_id,
+            password,
         }
     }
 }
