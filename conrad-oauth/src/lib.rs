@@ -35,7 +35,7 @@ pub trait OAuthProvider {
 
 #[doc(hidden)]
 pub trait IntoProvider {
-    fn to_provider<P>(&self, config: P::Config) -> P
+    fn into_provider<P>(self, config: P::Config) -> P
     where
         P: OAuthProvider;
 }
@@ -44,10 +44,10 @@ impl<D> IntoProvider for Authenticator<D>
 where
     D: Clone,
 {
-    fn to_provider<P>(&self, config: P::Config) -> P
+    fn into_provider<P>(self, config: P::Config) -> P
     where
         P: OAuthProvider,
     {
-        P::new(self.clone(), config)
+        P::new(self, config)
     }
 }
