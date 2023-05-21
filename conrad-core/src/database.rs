@@ -218,11 +218,8 @@ pub struct Key {
 pub struct UserId(String);
 
 impl UserId {
-    pub fn new<T>(user_id: T) -> Self
-    where
-        T: AsRef<str>,
-    {
-        Self(user_id.as_ref().to_string())
+    pub fn new(user_id: String) -> Self {
+        Self(user_id)
     }
 }
 
