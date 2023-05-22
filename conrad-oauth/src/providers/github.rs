@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::{
     errors::OAuthError, AuthInfo, ExpirationInfo, OAuthConfig, OAuthProvider, RedirectInfo, Tokens,
     ValidationResult,
@@ -11,6 +9,7 @@ use oauth2::{
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 const PROVIDER_ID: &'static str = "github";
 
