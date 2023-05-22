@@ -8,7 +8,7 @@ use oauth2::{
     ClientSecret, CsrfToken, Scope, TokenResponse, TokenUrl,
 };
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::time::Duration;
 
 const PROVIDER_ID: &'static str = "github";
