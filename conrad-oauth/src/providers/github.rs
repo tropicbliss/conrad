@@ -113,7 +113,7 @@ impl GitHubProvider {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct GitHubUser {
     pub login: String,
     pub id: usize,
@@ -157,7 +157,7 @@ pub struct GitHubUser {
     pub plan: Option<Plan>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Plan {
     pub name: String,
     pub space: usize,
