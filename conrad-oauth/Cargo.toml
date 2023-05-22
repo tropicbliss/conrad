@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.68"
 conrad-core = { path = "../conrad-core", version = "0.1.0" }
-cookie = "0.17.0"
-url = "2.3.1"
+oauth2 = "4.4.0"
+reqwest = { version = "0.11.18", features = ["json"] }
+serde = { version = "1.0.163", features = ["derive"] }
+thiserror = "1.0.40"
