@@ -13,11 +13,11 @@ use oauth2::url::Url;
 pub struct OAuthConfig {
     client_id: String,
     client_secret: String,
-    scope: Vec<&'static str>,
+    scope: Vec<String>,
 }
 
 impl OAuthConfig {
-    pub fn new(client_id: String, client_secret: String, scope: Vec<&'static str>) -> Self {
+    pub fn new(client_id: String, client_secret: String, scope: Vec<String>) -> Self {
         Self {
             client_id,
             client_secret,

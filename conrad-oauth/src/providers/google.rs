@@ -12,21 +12,26 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
-const PROVIDER_ID: &str = "github";
+const PROVIDER_ID: &str = "google";
 
-pub struct GitHubProvider {
+pub struct GoogleProvider {
     client: BasicClient,
     scope: Vec<String>,
     web_client: Client,
 }
 
 #[async_trait]
-impl OAuthProvider for GitHubProvider {
+impl OAuthProvider for GoogleProvider {
     type Config = OAuthConfig;
-    type UserInfo = GitHubUser;
+    type UserInfo = GoogleUser;
 
     fn get_authorization_url(&self) -> RedirectInfo {
-        let mut req = self.client.authorize_url(CsrfToken::new_random);
+        let mut req = self
+            .client
+            .authorize_url(CsrfToken::new_random)
+            .add_scope(Scope::new(
+                "https://www.googleapis.com/auth/userinfo.profile".to_string(),
+            ));
         for scope in &self.scope {
             req = req.add_scope(Scope::new(scope.to_string()));
         }
@@ -41,8 +46,8 @@ impl OAuthProvider for GitHubProvider {
         let client = BasicClient::new(
             ClientId::new(config.client_id),
             Some(ClientSecret::new(config.client_secret)),
-            AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
-            Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
+            AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap(),
+            Some(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap()),
         );
         let web_client = Client::builder()
             .timeout(Duration::from_secs(9))
@@ -61,13 +66,13 @@ impl OAuthProvider for GitHubProvider {
         code: String,
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError> {
         let tokens = self.get_tokens(code).await?;
-        let provider_user = utils::get_provider_user::<GitHubUser>(
+        let provider_user = utils::get_provider_user::<GoogleUser>(
             &self.web_client,
             &tokens.access_token,
-            "https://api.github.com/user",
+            "https://www.googleapis.com/oauth2/v3/userinfo",
         )
         .await?;
-        let provider_user_id = provider_user.id.to_string();
+        let provider_user_id = provider_user.sub.clone();
         Ok(ValidationResult {
             tokens,
             provider_user,
@@ -79,7 +84,7 @@ impl OAuthProvider for GitHubProvider {
     }
 }
 
-impl GitHubProvider {
+impl GoogleProvider {
     pub async fn get_tokens(&self, code: String) -> Result<Tokens, OAuthError> {
         let token_result = self
             .client
@@ -106,53 +111,14 @@ impl GitHubProvider {
 }
 
 #[derive(Deserialize)]
-pub struct GitHubUser {
-    pub login: String,
-    pub id: usize,
-    pub node_id: String,
-    pub avatar_url: String,
-    pub gravatar_id: String,
-    pub url: String,
-    pub html_url: String,
-    pub followers_url: String,
-    pub following_url: String,
-    pub gists_url: String,
-    pub starred_url: String,
-    pub subscriptions_url: String,
-    pub organizations_url: String,
-    pub repos_url: String,
-    pub events_url: String,
-    pub received_events_url: String,
-    #[serde(rename = "type")]
-    pub account_type: String,
-    pub site_admin: String,
+pub struct GoogleUser {
+    pub sub: String,
     pub name: String,
-    pub company: String,
-    pub blog: String,
-    pub location: String,
+    pub given_name: String,
+    pub family_name: String,
+    pub picture: String,
     pub email: String,
-    pub hireable: bool,
-    pub bio: String,
-    pub twitter_username: String,
-    pub public_repos: usize,
-    pub public_gists: usize,
-    pub followers: usize,
-    pub following: usize,
-    pub created_at: String,
-    pub updated_at: String,
-    pub private_gists: Option<usize>,
-    pub total_private_repos: Option<usize>,
-    pub owned_private_repos: Option<usize>,
-    pub disk_usage: Option<usize>,
-    pub collaborators: Option<usize>,
-    pub two_factor_authentication: Option<bool>,
-    pub plan: Option<Plan>,
-}
-
-#[derive(Deserialize)]
-pub struct Plan {
-    pub name: String,
-    pub space: usize,
-    pub private_repos: usize,
-    pub collaborators: usize,
+    pub email_verified: bool,
+    pub locale: String,
+    pub hd: String,
 }
