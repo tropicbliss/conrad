@@ -1,10 +1,12 @@
 use super::utils;
 use crate::{
-    errors::OAuthError, AuthInfo, OAuthConfig, OAuthProvider, RedirectInfo, ValidationResult,
+    errors::OAuthError, AuthInfo, ExpirationInfo, OAuthConfig, OAuthProvider, RedirectInfo, Tokens,
+    ValidationResult,
 };
 use async_trait::async_trait;
 use oauth2::{
-    basic::BasicClient, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenUrl,
+    basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
+    ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use reqwest::{Client, Url};
 use serde::Deserialize;
@@ -85,7 +87,7 @@ impl OAuthProvider for LinkedinProvider {
         &self,
         code: String,
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError> {
-        let tokens = utils::get_tokens_with_expiration(&self.client, code).await?;
+        let tokens = self.get_tokens(code).await?;
         let mut url = Url::parse("https://api.linkedin.com/v2/me").unwrap();
         url.query_pairs_mut()
             .append_pair("projection", "(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))");
@@ -121,6 +123,33 @@ impl OAuthProvider for LinkedinProvider {
                 provider_id: PROVIDER_ID,
                 provider_user_id,
             },
+        })
+    }
+}
+
+impl LinkedinProvider {
+    async fn get_tokens(&self, code: String) -> Result<Tokens, OAuthError> {
+        let token_result = self
+            .client
+            .exchange_code(AuthorizationCode::new(code))
+            .request_async(async_http_client)
+            .await
+            .map_err(|err| OAuthError::RequestError(Box::new(err)))?;
+        let access_token = token_result.access_token().secret().to_string();
+        Ok(Tokens {
+            access_token,
+            expiration_info: Some(ExpirationInfo {
+                refresh_token: token_result.refresh_token().unwrap().secret().to_string(),
+                expires_in: token_result.expires_in().unwrap().as_millis() as i64,
+            }),
+            scope: Some(
+                token_result
+                    .scopes()
+                    .unwrap()
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            ),
         })
     }
 }
