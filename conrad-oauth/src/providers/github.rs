@@ -95,11 +95,13 @@ impl GitHubProvider {
                     refresh_token: token_result.refresh_token().unwrap().secret().to_string(),
                     expires_in: expires_in.as_millis() as i64,
                 }),
+                scope: None,
             }
         } else {
             Tokens {
                 access_token,
                 expiration_info: None,
+                scope: None,
             }
         })
     }

@@ -125,6 +125,7 @@ where
 pub struct Tokens {
     pub access_token: String,
     pub expiration_info: Option<ExpirationInfo>,
+    pub scope: Option<String>,
 }
 
 pub struct ExpirationInfo {

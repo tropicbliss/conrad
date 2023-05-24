@@ -39,5 +39,6 @@ pub(crate) async fn get_tokens_with_expiration(
             refresh_token: token_result.refresh_token().unwrap().secret().to_string(),
             expires_in: token_result.expires_in().unwrap().as_millis() as i64,
         }),
+        scope: None,
     })
 }
