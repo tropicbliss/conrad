@@ -45,7 +45,7 @@ impl OAuthProvider for GitHubProvider {
             Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
         );
         let web_client = Client::builder()
-            .timeout(Duration::from_secs(9))
+            .timeout(Duration::from_secs(15))
             .user_agent("conrad")
             .build()
             .unwrap();

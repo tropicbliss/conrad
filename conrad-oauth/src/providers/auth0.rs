@@ -12,46 +12,93 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
-const PROVIDER_ID: &str = "discord";
+const PROVIDER_ID: &str = "auth0";
 
-pub struct DiscordConfig {
+pub struct Auth0Config {
     base: OAuthConfig,
+    app_domain: String,
     redirect_uri: String,
+    connection: Option<String>,
+    organization: Option<String>,
+    invitation: Option<String>,
+    login_hint: Option<String>,
 }
 
-impl DiscordConfig {
+impl Auth0Config {
     pub fn new(
         client_id: String,
         client_secret: String,
         scope: Vec<String>,
         redirect_uri: String,
+        app_domain: String,
     ) -> Self {
         let base = OAuthConfig {
             client_id,
             client_secret,
             scope,
         };
-        Self { base, redirect_uri }
+        Self {
+            base,
+            redirect_uri,
+            app_domain,
+            connection: None,
+            organization: None,
+            invitation: None,
+            login_hint: None,
+        }
+    }
+
+    pub fn set_connection(self, connection: String) -> Self {
+        Self {
+            connection: Some(connection),
+            ..self
+        }
+    }
+
+    pub fn set_organization(self, organization: String) -> Self {
+        Self {
+            organization: Some(organization),
+            ..self
+        }
+    }
+
+    pub fn set_invitation(self, invitation: String) -> Self {
+        Self {
+            invitation: Some(invitation),
+            ..self
+        }
+    }
+
+    pub fn set_login_hint(self, login_hint: String) -> Self {
+        Self {
+            login_hint: Some(login_hint),
+            ..self
+        }
     }
 }
 
-pub struct DiscordProvider {
+pub struct Auth0Provider {
     client: BasicClient,
     scope: Vec<String>,
     web_client: Client,
+    app_domain: String,
+    connection: Option<String>,
+    organization: Option<String>,
+    invitation: Option<String>,
+    login_hint: Option<String>,
 }
 
 #[async_trait]
-impl OAuthProvider for DiscordProvider {
-    type Config = DiscordConfig;
-    type UserInfo = DiscordUser;
+impl OAuthProvider for Auth0Provider {
+    type Config = Auth0Config;
+    type UserInfo = Auth0User;
 
     fn new(config: Self::Config) -> Self {
         let client = BasicClient::new(
             ClientId::new(config.base.client_id),
             Some(ClientSecret::new(config.base.client_secret)),
-            AuthUrl::new("https://discord.com/oauth2/authorize".to_string()).unwrap(),
-            Some(TokenUrl::new("https://discord.com/api/oauth2/token".to_string()).unwrap()),
+            AuthUrl::new(format!("{}{}", config.app_domain, "/authorize")).unwrap(),
+            Some(TokenUrl::new(format!("{}{}", config.app_domain, "/oauth/token")).unwrap()),
         )
         .set_redirect_uri(RedirectUrl::new(config.redirect_uri.to_string()).unwrap());
         let web_client = Client::builder()
@@ -63,6 +110,11 @@ impl OAuthProvider for DiscordProvider {
             client,
             scope: config.base.scope,
             web_client,
+            app_domain: config.app_domain,
+            connection: config.connection,
+            invitation: config.invitation,
+            login_hint: config.login_hint,
+            organization: config.organization,
         }
     }
 
@@ -70,7 +122,20 @@ impl OAuthProvider for DiscordProvider {
         let mut req = self
             .client
             .authorize_url(CsrfToken::new_random)
-            .add_scope(Scope::new("identify".to_string()));
+            .add_scope(Scope::new("openid".to_string()))
+            .add_scope(Scope::new("profile".to_string()));
+        if let Some(connection) = &self.connection {
+            req = req.add_extra_param("connection", connection);
+        }
+        if let Some(invitation) = &self.invitation {
+            req = req.add_extra_param("invitation", invitation);
+        }
+        if let Some(login_hint) = &self.login_hint {
+            req = req.add_extra_param("login_hint", login_hint);
+        }
+        if let Some(organization) = &self.organization {
+            req = req.add_extra_param("organization", organization);
+        }
         for scope in &self.scope {
             req = req.add_scope(Scope::new(scope.to_string()));
         }
@@ -86,13 +151,13 @@ impl OAuthProvider for DiscordProvider {
         code: String,
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError> {
         let tokens = self.get_tokens(code).await?;
-        let provider_user = utils::get_provider_user::<RawUser>(
+        let mut provider_user = utils::get_provider_user::<Auth0User>(
             &self.web_client,
             &tokens.access_token,
-            "https://discord.com/api/oauth2/@me",
+            &format!("{}{}", self.app_domain, "/userinfo"),
         )
-        .await?
-        .user;
+        .await?;
+        provider_user.id = provider_user.id.split_once('|').unwrap().1.to_string();
         let provider_user_id = provider_user.id.clone();
         Ok(ValidationResult {
             tokens,
@@ -105,7 +170,7 @@ impl OAuthProvider for DiscordProvider {
     }
 }
 
-impl DiscordProvider {
+impl Auth0Provider {
     pub async fn get_tokens(&self, code: String) -> Result<Tokens, OAuthError> {
         let token_result = self
             .client
@@ -125,15 +190,11 @@ impl DiscordProvider {
 }
 
 #[derive(Deserialize)]
-struct RawUser {
-    user: DiscordUser,
-}
-
-#[derive(Deserialize)]
-pub struct DiscordUser {
+pub struct Auth0User {
+    #[serde(rename = "sub")]
     pub id: String,
-    pub username: String,
-    pub avatar: String,
-    pub discriminator: String,
-    pub public_flags: usize,
+    pub nickname: String,
+    pub name: String,
+    pub picture: String,
+    pub updated_at: String,
 }

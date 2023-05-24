@@ -6,13 +6,34 @@ use crate::{
 use async_trait::async_trait;
 use oauth2::{
     basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
-    ClientSecret, CsrfToken, Scope, TokenResponse, TokenUrl,
+    ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
 const PROVIDER_ID: &str = "google";
+
+pub struct GoogleConfig {
+    base: OAuthConfig,
+    redirect_uri: String,
+}
+
+impl GoogleConfig {
+    pub fn new(
+        client_id: String,
+        client_secret: String,
+        scope: Vec<String>,
+        redirect_uri: String,
+    ) -> Self {
+        let base = OAuthConfig {
+            client_id,
+            client_secret,
+            scope,
+        };
+        Self { base, redirect_uri }
+    }
+}
 
 pub struct GoogleProvider {
     client: BasicClient,
@@ -22,7 +43,7 @@ pub struct GoogleProvider {
 
 #[async_trait]
 impl OAuthProvider for GoogleProvider {
-    type Config = OAuthConfig;
+    type Config = GoogleConfig;
     type UserInfo = GoogleUser;
 
     fn get_authorization_url(&self) -> RedirectInfo {
@@ -44,19 +65,20 @@ impl OAuthProvider for GoogleProvider {
 
     fn new(config: Self::Config) -> Self {
         let client = BasicClient::new(
-            ClientId::new(config.client_id),
-            Some(ClientSecret::new(config.client_secret)),
+            ClientId::new(config.base.client_id),
+            Some(ClientSecret::new(config.base.client_secret)),
             AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string()).unwrap(),
             Some(TokenUrl::new("https://oauth2.googleapis.com/token".to_string()).unwrap()),
-        );
+        )
+        .set_redirect_uri(RedirectUrl::new(config.redirect_uri).unwrap());
         let web_client = Client::builder()
-            .timeout(Duration::from_secs(9))
+            .timeout(Duration::from_secs(15))
             .user_agent("conrad")
             .build()
             .unwrap();
         Self {
             client,
-            scope: config.scope,
+            scope: config.base.scope,
             web_client,
         }
     }
