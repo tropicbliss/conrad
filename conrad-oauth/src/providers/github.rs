@@ -80,7 +80,7 @@ impl OAuthProvider for GitHubProvider {
 }
 
 impl GitHubProvider {
-    pub async fn get_tokens(&self, code: String) -> Result<Tokens, OAuthError> {
+    async fn get_tokens(&self, code: String) -> Result<Tokens, OAuthError> {
         let token_result = self
             .client
             .exchange_code(AuthorizationCode::new(code))

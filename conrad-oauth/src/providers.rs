@@ -5,4 +5,5 @@ pub mod github;
 pub mod google;
 pub mod linkedin;
 pub mod patreon;
+pub mod twitch;
 mod utils;
