@@ -14,6 +14,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "linkedin";
 
+#[derive(Clone)]
 pub struct LinkedinConfig {
     base: OAuthConfig,
     redirect_uri: String,
@@ -35,6 +36,7 @@ impl LinkedinConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct LinkedinProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -184,6 +186,7 @@ struct Identifier {
     identifier: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct LinkedinUser {
     pub id: String,
     pub first_name: String,

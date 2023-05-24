@@ -12,6 +12,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "facebook";
 
+#[derive(Clone)]
 pub struct FacebookConfig {
     base: OAuthConfig,
     redirect_uri: String,
@@ -33,6 +34,7 @@ impl FacebookConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct FacebookProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -106,7 +108,7 @@ impl OAuthProvider for FacebookProvider {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct FacebookUser {
     pub id: String,
     pub name: String,

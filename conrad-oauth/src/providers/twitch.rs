@@ -15,6 +15,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "twitch";
 
+#[derive(Clone)]
 pub struct TwitchConfig {
     base: OAuthConfig,
     redirect_uri: String,
@@ -48,6 +49,7 @@ impl TwitchConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct TwitchProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -133,7 +135,7 @@ struct RawUser {
     data: Vec<TwitchUser>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct TwitchUser {
     pub id: String,
     pub login: String,
@@ -149,7 +151,7 @@ pub struct TwitchUser {
     pub created_at: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub enum UserType {
     #[serde(rename = "")]
     Others,
@@ -161,7 +163,7 @@ pub enum UserType {
     GlobalModerator,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub enum BroadcasterType {
     #[serde(rename = "")]
     Others,

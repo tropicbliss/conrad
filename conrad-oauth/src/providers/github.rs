@@ -14,6 +14,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "github";
 
+#[derive(Clone)]
 pub struct GitHubProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -107,7 +108,7 @@ impl GitHubProvider {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GitHubUser {
     pub login: String,
     pub id: usize,
@@ -151,7 +152,7 @@ pub struct GitHubUser {
     pub plan: Option<Plan>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Plan {
     pub name: String,
     pub space: usize,

@@ -12,6 +12,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "auth0";
 
+#[derive(Clone)]
 pub struct Auth0Config {
     base: OAuthConfig,
     app_domain: String,
@@ -75,6 +76,7 @@ impl Auth0Config {
     }
 }
 
+#[derive(Clone)]
 pub struct Auth0Provider {
     client: BasicClient,
     scope: Vec<String>,
@@ -168,7 +170,7 @@ impl OAuthProvider for Auth0Provider {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Auth0User {
     #[serde(rename = "sub")]
     pub id: String,

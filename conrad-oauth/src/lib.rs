@@ -10,6 +10,7 @@ use conrad_core::{
 use errors::OAuthError;
 use oauth2::url::Url;
 
+#[derive(Clone)]
 pub struct OAuthConfig {
     client_id: String,
     client_secret: String,
@@ -39,17 +40,20 @@ pub trait OAuthProvider {
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError>;
 }
 
+#[derive(Clone, Debug)]
 pub struct RedirectInfo {
     pub url: Url,
     pub csrf_token: String,
 }
 
+#[derive(Clone)]
 pub struct ValidationResult<T> {
     pub tokens: Tokens,
     pub provider_user: T,
     pub auth_info: AuthInfo,
 }
 
+#[derive(Clone)]
 pub struct AuthInfo {
     provider_id: &'static str,
     provider_user_id: String,
@@ -67,6 +71,7 @@ impl AuthInfo {
     }
 }
 
+#[derive(Clone)]
 pub struct AuthConnector<'a, D>
 where
     D: Clone,
@@ -122,12 +127,14 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Tokens {
     pub access_token: String,
     pub expiration_info: Option<ExpirationInfo>,
     pub scope: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ExpirationInfo {
     pub refresh_token: String,
     pub expires_in: i64,

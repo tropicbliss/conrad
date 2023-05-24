@@ -12,6 +12,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "discord";
 
+#[derive(Clone)]
 pub struct DiscordConfig {
     base: OAuthConfig,
     redirect_uri: String,
@@ -33,6 +34,7 @@ impl DiscordConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct DiscordProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -108,7 +110,7 @@ struct RawUser {
     user: DiscordUser,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct DiscordUser {
     pub id: String,
     pub username: String,

@@ -12,6 +12,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "google";
 
+#[derive(Clone)]
 pub struct GoogleConfig {
     base: OAuthConfig,
     redirect_uri: String,
@@ -33,6 +34,7 @@ impl GoogleConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct GoogleProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -104,7 +106,7 @@ impl OAuthProvider for GoogleProvider {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct GoogleUser {
     pub sub: String,
     pub name: String,

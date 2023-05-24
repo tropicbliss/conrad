@@ -12,6 +12,7 @@ use std::time::Duration;
 
 const PROVIDER_ID: &str = "patreon";
 
+#[derive(Clone)]
 pub struct PatreonConfig {
     base: OAuthConfig,
     redirect_uri: String,
@@ -33,6 +34,7 @@ impl PatreonConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct PatreonProvider {
     client: BasicClient,
     scope: Vec<String>,
@@ -107,13 +109,13 @@ impl OAuthProvider for PatreonProvider {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct PatreonUser {
     pub id: String,
     pub attributes: Attributes,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Attributes {
     pub about: Option<String>,
     pub created: String,
