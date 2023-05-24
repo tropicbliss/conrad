@@ -1,12 +1,10 @@
 use super::utils;
 use crate::{
-    errors::OAuthError, AuthInfo, ExpirationInfo, OAuthConfig, OAuthProvider, RedirectInfo, Tokens,
-    ValidationResult,
+    errors::OAuthError, AuthInfo, OAuthConfig, OAuthProvider, RedirectInfo, ValidationResult,
 };
 use async_trait::async_trait;
 use oauth2::{
-    basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
-    ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    basic::BasicClient, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenUrl,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -87,7 +85,7 @@ impl OAuthProvider for GoogleProvider {
         &self,
         code: String,
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError> {
-        let tokens = self.get_tokens(code).await?;
+        let tokens = utils::get_tokens_with_expiration(&self.client, code).await?;
         let provider_user = utils::get_provider_user::<GoogleUser>(
             &self.web_client,
             &tokens.access_token,
@@ -102,32 +100,6 @@ impl OAuthProvider for GoogleProvider {
                 provider_id: PROVIDER_ID,
                 provider_user_id,
             },
-        })
-    }
-}
-
-impl GoogleProvider {
-    pub async fn get_tokens(&self, code: String) -> Result<Tokens, OAuthError> {
-        let token_result = self
-            .client
-            .exchange_code(AuthorizationCode::new(code))
-            .request_async(async_http_client)
-            .await
-            .map_err(|err| OAuthError::RequestError(Box::new(err)))?;
-        let access_token = token_result.access_token().secret().to_string();
-        Ok(if let Some(expires_in) = token_result.expires_in() {
-            Tokens {
-                access_token,
-                expiration_info: Some(ExpirationInfo {
-                    refresh_token: token_result.refresh_token().unwrap().secret().to_string(),
-                    expires_in: expires_in.as_millis() as i64,
-                }),
-            }
-        } else {
-            Tokens {
-                access_token,
-                expiration_info: None,
-            }
         })
     }
 }
