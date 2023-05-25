@@ -47,7 +47,7 @@ pub struct RedditProvider {
 #[async_trait]
 impl OAuthProvider for RedditProvider {
     type Config = RedditConfig;
-    type UserInfo = RedditUser;
+    type UserInfo = Box<RedditUser>;
 
     fn get_authorization_url(&self) -> RedirectInfo {
         let mut req = self
@@ -90,7 +90,7 @@ impl OAuthProvider for RedditProvider {
         code: String,
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError> {
         let tokens = self.get_tokens(code).await?;
-        let provider_user = utils::get_provider_user::<RedditUser>(
+        let provider_user = utils::get_provider_user::<Box<RedditUser>>(
             &self.web_client,
             &tokens.access_token,
             "https://oauth.reddit.com/api/v1/me",
