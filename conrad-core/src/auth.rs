@@ -255,7 +255,7 @@ where
         }
     }
 
-    pub async fn validate_user<'c>(
+    pub async fn validate_user(
         &self,
         cookies: &mut CookieJar,
         method: &Method,
