@@ -3,6 +3,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum OAuthError {
-    #[error("{0:?}")]
+    #[error("request error: {0:?}")]
     RequestError(Box<dyn Error + Send>),
 }
