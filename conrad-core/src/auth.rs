@@ -229,7 +229,7 @@ where
         }
     }
 
-    pub async fn validate<'c>(
+    pub async fn validate(
         &self,
         cookies: &mut CookieJar,
         method: &Method,
