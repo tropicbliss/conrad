@@ -116,5 +116,5 @@ pub struct DiscordUser {
     pub username: String,
     pub avatar: String,
     pub discriminator: String,
-    pub public_flags: usize,
+    pub public_flags: i64,
 }

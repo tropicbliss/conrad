@@ -146,7 +146,7 @@ pub struct TwitchUser {
     pub description: String,
     pub profile_image_url: String,
     pub offline_image_url: String,
-    pub view_count: usize,
+    pub view_count: i64,
     pub email: Option<String>,
     pub created_at: String,
 }

@@ -111,7 +111,7 @@ impl GitHubProvider {
 #[derive(Deserialize, Debug, Clone)]
 pub struct GitHubUser {
     pub login: String,
-    pub id: usize,
+    pub id: i64,
     pub node_id: String,
     pub avatar_url: String,
     pub gravatar_id: String,
@@ -137,17 +137,17 @@ pub struct GitHubUser {
     pub hireable: bool,
     pub bio: String,
     pub twitter_username: String,
-    pub public_repos: usize,
-    pub public_gists: usize,
-    pub followers: usize,
-    pub following: usize,
+    pub public_repos: i64,
+    pub public_gists: i64,
+    pub followers: i64,
+    pub following: i64,
     pub created_at: String,
     pub updated_at: String,
-    pub private_gists: Option<usize>,
-    pub total_private_repos: Option<usize>,
-    pub owned_private_repos: Option<usize>,
-    pub disk_usage: Option<usize>,
-    pub collaborators: Option<usize>,
+    pub private_gists: Option<i64>,
+    pub total_private_repos: Option<i64>,
+    pub owned_private_repos: Option<i64>,
+    pub disk_usage: Option<i64>,
+    pub collaborators: Option<i64>,
     pub two_factor_authentication: Option<bool>,
     pub plan: Option<Plan>,
 }
@@ -155,7 +155,7 @@ pub struct GitHubUser {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Plan {
     pub name: String,
-    pub space: usize,
-    pub private_repos: usize,
-    pub collaborators: usize,
+    pub space: i64,
+    pub private_repos: i64,
+    pub collaborators: i64,
 }
