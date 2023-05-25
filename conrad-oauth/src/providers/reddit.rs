@@ -247,7 +247,7 @@ pub struct Features {
     pub is_email_permission_required: bool,
     pub mod_awards: bool,
     pub expensive_coins_package: bool,
-    pub mweb_xpromo_revamp_v2: MwebXpromoRevampV2,
+    pub mweb_xpromo_revamp_v2: Mweb,
     pub awards_on_streams: bool,
     pub mweb_xpromo_modal_listing_click_daily_dismissible_ios: bool,
     pub chat_subreddit: bool,
@@ -263,30 +263,16 @@ pub struct Features {
     pub premium_subscriptions_table: bool,
     pub mweb_xpromo_interstitial_comments_android: bool,
     pub crowd_control_for_post: bool,
-    pub mweb_nsfw_xpromo: MwebNsfwXpromo,
+    pub mweb_nsfw_xpromo: Mweb,
     pub noreferrer_to_noopener: bool,
     pub chat_group_rollout: bool,
     pub resized_styles_images: bool,
     pub spez_modal: bool,
-    pub mweb_sharing_clipboard: MwebSharingClipboard,
+    pub mweb_sharing_clipboard: Mweb,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct MwebXpromoRevampV2 {
-    pub owner: String,
-    pub variant: String,
-    pub experiment_id: i64,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct MwebNsfwXpromo {
-    pub owner: String,
-    pub variant: String,
-    pub experiment_id: i64,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct MwebSharingClipboard {
+pub struct Mweb {
     pub owner: String,
     pub variant: String,
     pub experiment_id: i64,
