@@ -1,12 +1,12 @@
 use crate::{
     database::{
         CreateKeyStatus, CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus,
-        Key, KeySchema, KeyTimestamp, KeyType, ReadKeyStatus, ReadSessionStatus,
-        ReadSessionsStatus, ReadUserStatus, Session, SessionData, SessionId, SessionSchema,
-        SessionState, UpdateKeyStatus, UpdateUserStatus, User, UserData, UserId, ValidationSuccess,
+        KeySchema, ReadKeyStatus, ReadSessionStatus, ReadSessionsStatus, ReadUserStatus,
+        SessionData, SessionSchema, UpdateKeyStatus, UpdateUserStatus,
     },
     errors::AuthError,
-    utils,
+    utils, Key, KeyTimestamp, KeyType, NaiveKeyType, Session, SessionId, SessionState, User,
+    UserData, UserId, ValidationSuccess,
 };
 use cookie::{time::OffsetDateTime, Cookie, CookieJar};
 use futures::{stream, StreamExt, TryStreamExt};
@@ -36,9 +36,9 @@ where
         }
     }
 
-    pub fn set_user_id_generator<F>(self, closure: fn() -> UserId) -> Self {
+    pub fn set_user_id_generator<F>(self, function: fn() -> UserId) -> Self {
         Self {
-            generate_custom_user_id: closure,
+            generate_custom_user_id: function,
             ..self
         }
     }
@@ -525,7 +525,7 @@ where
         &self,
         user_id: UserId,
         user_data: UserData,
-        key_type: &KeyType,
+        key_type: &NaiveKeyType,
     ) -> Result<Key, AuthError> {
         let key_id = format!("{}:{}", user_data.provider_id, user_data.provider_user_id);
         let hashed_password = if let Some(password) = user_data.password.clone() {
@@ -533,7 +533,7 @@ where
         } else {
             None
         };
-        if let KeyType::SingleUse { expires_in } = key_type {
+        if let NaiveKeyType::SingleUse { expires_in } = key_type {
             let expires_at = Self::get_one_time_key_expiration(expires_in.get_timestamp());
             let res = self
                 .adapter
@@ -558,7 +558,9 @@ where
                     } else {
                         false
                     },
-                    user_id: user_id,
+                    user_id,
+                    provider_id: user_data.provider_id,
+                    provider_user_id: user_data.provider_user_id,
                 }),
             }
         } else {
@@ -566,7 +568,7 @@ where
                 .adapter
                 .create_key(&KeySchema {
                     id: key_id,
-                    hashed_password: hashed_password,
+                    hashed_password,
                     user_id: user_id.clone(),
                     primary_key: false,
                     expires: None,
@@ -577,13 +579,15 @@ where
                 CreateKeyStatus::KeyAlreadyExists => Err(AuthError::DuplicateKeyId),
                 CreateKeyStatus::UserDoesNotExist => Err(AuthError::InvalidUserId),
                 CreateKeyStatus::Ok => Ok(Key {
-                    key_type: KeyType::Persistent,
+                    key_type: KeyType::Persistent { primary: false },
                     password_defined: if let Some(password) = user_data.password {
                         !password.is_empty()
                     } else {
                         false
                     },
                     user_id,
+                    provider_id: user_data.provider_id,
+                    provider_user_id: user_data.provider_user_id,
                 }),
             }
         }
@@ -679,6 +683,7 @@ impl From<KeySchema> for Key {
         } else {
             false
         };
+        let (provider_id, provider_user_id) = database_key.id.split_once(':').unwrap();
         if let Some(expires) = database_key.expires {
             Self {
                 key_type: KeyType::SingleUse {
@@ -686,12 +691,18 @@ impl From<KeySchema> for Key {
                 },
                 password_defined: is_password_defined,
                 user_id,
+                provider_id: provider_id.to_string(),
+                provider_user_id: provider_user_id.to_string(),
             }
         } else {
             Self {
-                key_type: KeyType::Persistent,
+                key_type: KeyType::Persistent {
+                    primary: database_key.primary_key,
+                },
                 password_defined: is_password_defined,
                 user_id,
+                provider_id: provider_id.to_string(),
+                provider_user_id: provider_user_id.to_string(),
             }
         }
     }

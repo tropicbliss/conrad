@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
-cookie = "0.16"
+cookie = "0.17"
 futures = "0.3"
 http = "0.2"
 scrypt = "0.11"
-serde = { version = "1.0.163", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 tokio = { version = "1.28", features = ["macros", "rt"] }
 url = "2.3"

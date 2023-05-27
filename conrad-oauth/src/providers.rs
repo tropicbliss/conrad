@@ -7,4 +7,3 @@ pub mod linkedin;
 pub mod patreon;
 pub mod reddit;
 pub mod twitch;
-mod utils;

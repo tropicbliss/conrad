@@ -1,14 +1,14 @@
-pub mod errors;
-pub mod providers;
-
 use async_trait::async_trait;
 use conrad_core::{
-    auth::Authenticator,
-    database::{DatabaseAdapter, Key, KeyType, User, UserData, UserId},
-    errors::AuthError,
+    auth::Authenticator, database::DatabaseAdapter, errors::AuthError, Key, NaiveKeyType, User,
+    UserData, UserId,
 };
 use errors::OAuthError;
 use oauth2::url::Url;
+
+pub mod errors;
+pub mod providers;
+mod utils;
 
 #[derive(Clone)]
 pub struct OAuthConfig {
@@ -110,7 +110,7 @@ where
             None,
         );
         self.authenticator
-            .create_key(user_id, user_data, &KeyType::Persistent)
+            .create_key(user_id, user_data, &NaiveKeyType::Persistent)
             .await
     }
 

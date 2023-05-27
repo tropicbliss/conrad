@@ -1,6 +1,5 @@
-use super::utils;
 use crate::{
-    errors::OAuthError, AuthInfo, OAuthConfig, OAuthProvider, RedirectInfo, ValidationResult,
+    errors::OAuthError, utils, AuthInfo, OAuthConfig, OAuthProvider, RedirectInfo, ValidationResult,
 };
 use async_trait::async_trait;
 use oauth2::{
