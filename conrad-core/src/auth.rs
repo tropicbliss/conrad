@@ -198,29 +198,24 @@ where
     ) -> Option<SessionId<'c>> {
         let session_id = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value().into());
         let csrf_check = method != Method::GET && method != Method::HEAD;
-        let mut error = false;
-        let request_origin = headers.get("origin");
         if csrf_check {
+            let request_origin = headers.get("origin");
             match request_origin {
                 Some(request_origin) => {
                     if let Ok(request_origin) = request_origin.to_str() {
                         if origin_url.as_str() != request_origin {
-                            error = true;
+                            return None;
                         }
                     } else {
-                        error = true;
+                        return None;
                     }
                 }
                 None => {
-                    error = true;
+                    return None;
                 }
             }
         }
-        if error {
-            None
-        } else {
-            session_id
-        }
+        session_id
     }
 
     pub async fn validate(
@@ -620,26 +615,21 @@ impl From<KeySchema> for Key {
             false
         };
         let (provider_id, provider_user_id) = database_key.id.split_once(':').unwrap();
-        if let Some(expires) = database_key.expires {
-            Self {
-                key_type: KeyType::SingleUse {
-                    expires_in: expires.into(),
-                },
-                password_defined: is_password_defined,
-                user_id,
-                provider_id: provider_id.to_string(),
-                provider_user_id: provider_user_id.to_string(),
+        let key_type = if let Some(expires) = database_key.expires {
+            KeyType::SingleUse {
+                expires_in: expires.into(),
             }
         } else {
-            Self {
-                key_type: KeyType::Persistent {
-                    primary: database_key.primary_key,
-                },
-                password_defined: is_password_defined,
-                user_id,
-                provider_id: provider_id.to_string(),
-                provider_user_id: provider_user_id.to_string(),
+            KeyType::Persistent {
+                primary: database_key.primary_key,
             }
+        };
+        Self {
+            key_type,
+            password_defined: is_password_defined,
+            user_id,
+            provider_id: provider_id.to_string(),
+            provider_user_id: provider_user_id.to_string(),
         }
     }
 }
