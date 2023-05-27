@@ -1,10 +1,10 @@
-use std::error::Error;
+use conrad_core::errors::AuthError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum TokenError {
-    #[error("auth error: {0:?}")]
-    AuthError(Box<dyn Error>),
+    #[error("{0:?}")]
+    AuthError(#[from] AuthError),
     #[error("invalid user id")]
     InvalidUserId,
     #[error("duplicate token")]
