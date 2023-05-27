@@ -7,10 +7,7 @@ use futures::{stream, StreamExt, TryStreamExt};
 use rand::{distributions::Uniform, Rng};
 use serde::{de::DeserializeOwned, Serialize};
 
-pub struct PasswordTokenBuilder<'a, D, U>
-where
-    D: Clone,
-{
+pub struct PasswordTokenBuilder<'a, D, U> {
     auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
@@ -18,10 +15,7 @@ where
     password_len: usize,
 }
 
-impl<'a, D, U> PasswordTokenBuilder<'a, D, U>
-where
-    D: Clone,
-{
+impl<'a, D, U> PasswordTokenBuilder<'a, D, U> {
     pub fn new(auth: &'a Authenticator<D, U>, name: String, expires_in: i64) -> Self {
         Self {
             auth,
@@ -63,10 +57,7 @@ where
     }
 }
 
-pub struct PasswordToken<'a, D, U>
-where
-    D: Clone,
-{
+pub struct PasswordToken<'a, D, U> {
     auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
@@ -76,7 +67,7 @@ where
 
 impl<'a, D, U> PasswordToken<'a, D, U>
 where
-    D: Clone + DatabaseAdapter<U>,
+    D: DatabaseAdapter<U>,
     U: Serialize + DeserializeOwned,
 {
     pub async fn issue(&self, user_id: UserId) -> Result<Token, TokenError> {

@@ -24,10 +24,7 @@ pub struct AuthenticatorBuilder<D> {
     auto_database_cleanup: bool,
 }
 
-impl<D> AuthenticatorBuilder<D>
-where
-    D: Clone,
-{
+impl<D> AuthenticatorBuilder<D> {
     pub fn new(adapter: D) -> Self {
         Self {
             adapter,
@@ -60,12 +57,7 @@ where
     }
 }
 
-// Authenticator should be kept stateless to uphold the guarantees of IntoProvider cloning this
-#[derive(Clone)]
-pub struct Authenticator<D, U>
-where
-    D: Clone,
-{
+pub struct Authenticator<D, U> {
     adapter: D,
     generate_custom_user_id: fn() -> UserId,
     auto_database_cleanup: bool,
@@ -74,7 +66,7 @@ where
 
 impl<D, U> Authenticator<D, U>
 where
-    D: DatabaseAdapter<U> + Clone,
+    D: DatabaseAdapter<U>,
     U: Serialize + DeserializeOwned,
 {
     /// `attributes` represent extra user metadata that can be stored on user creation.

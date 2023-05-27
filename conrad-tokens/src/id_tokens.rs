@@ -7,20 +7,14 @@ use futures::{stream, StreamExt, TryStreamExt};
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
-pub struct IdTokenBuilder<'a, D, U>
-where
-    D: Clone,
-{
+pub struct IdTokenBuilder<'a, D, U> {
     auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
     generate_custom_token_id: fn() -> String,
 }
 
-impl<'a, D, U> IdTokenBuilder<'a, D, U>
-where
-    D: Clone,
-{
+impl<'a, D, U> IdTokenBuilder<'a, D, U> {
     pub fn new(auth: &'a Authenticator<D, U>, name: String, expires_in: i64) -> Self {
         Self {
             auth,
@@ -47,10 +41,7 @@ where
     }
 }
 
-pub struct IdToken<'a, D, U>
-where
-    D: Clone,
-{
+pub struct IdToken<'a, D, U> {
     auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
@@ -59,7 +50,7 @@ where
 
 impl<'a, D, U> IdToken<'a, D, U>
 where
-    D: Clone + DatabaseAdapter<U>,
+    D: DatabaseAdapter<U>,
     U: Serialize + DeserializeOwned,
 {
     pub async fn issue(&self, user_id: UserId) -> Result<Token, TokenError> {

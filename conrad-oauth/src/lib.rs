@@ -61,10 +61,7 @@ pub struct AuthInfo {
 }
 
 impl AuthInfo {
-    pub fn into_auth_connector<D, U>(self, auth: &Authenticator<D, U>) -> AuthConnector<D, U>
-    where
-        D: Clone,
-    {
+    pub fn into_auth_connector<D, U>(self, auth: &Authenticator<D, U>) -> AuthConnector<D, U> {
         AuthConnector {
             auth_info: self,
             auth,
@@ -73,17 +70,14 @@ impl AuthInfo {
 }
 
 #[derive(Clone)]
-pub struct AuthConnector<'a, D, U>
-where
-    D: Clone,
-{
+pub struct AuthConnector<'a, D, U> {
     auth_info: AuthInfo,
     auth: &'a Authenticator<D, U>,
 }
 
 impl<'a, D, U> AuthConnector<'a, D, U>
 where
-    D: Clone + DatabaseAdapter<U>,
+    D: DatabaseAdapter<U>,
     U: Serialize + DeserializeOwned,
 {
     pub async fn get_existing_user(&self) -> Result<Option<U>, AuthError> {
