@@ -1,2 +1,2 @@
 [workspace]
-members = ["conrad", "*-adapter", "conrad-*"]
+members = ["conrad", "conrad-*"]

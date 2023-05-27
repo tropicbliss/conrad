@@ -6,12 +6,8 @@ edition = "2021"
 [features]
 oauth = ["conrad-oauth"]
 tokens = ["conrad-tokens"]
-diesel-postgres = ["diesel-adapter/postgres"]
-diesel-mysql = ["diesel-adapter/mysql"]
-diesel-sqlite = ["diesel-adapter/sqlite"]
 
 [dependencies]
 conrad-core = { path = "../conrad-core", version = "0.1.0" }
 conrad-oauth = { path = "../conrad-oauth", version = "0.1.0", optional = true }
 conrad-tokens = { path = "../conrad-tokens", version = "0.1.0", optional = true }
-diesel-adapter = { path = "../diesel-adapter", version = "0.1.0", optional = true }
