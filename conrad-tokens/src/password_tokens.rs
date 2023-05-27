@@ -5,23 +5,24 @@ use conrad_core::{
 };
 use futures::{stream, StreamExt, TryStreamExt};
 use rand::{distributions::Uniform, Rng};
+use serde::{de::DeserializeOwned, Serialize};
 
-pub struct PasswordTokenBuilder<'a, D>
+pub struct PasswordTokenBuilder<'a, D, U>
 where
     D: Clone,
 {
-    auth: &'a Authenticator<D>,
+    auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
     generate_custom_token_id: fn(usize) -> String,
     password_len: usize,
 }
 
-impl<'a, D> PasswordTokenBuilder<'a, D>
+impl<'a, D, U> PasswordTokenBuilder<'a, D, U>
 where
     D: Clone,
 {
-    pub fn new(auth: &'a Authenticator<D>, name: String, expires_in: i64) -> Self {
+    pub fn new(auth: &'a Authenticator<D, U>, name: String, expires_in: i64) -> Self {
         Self {
             auth,
             name,
@@ -51,7 +52,7 @@ where
         }
     }
 
-    pub fn build(self) -> PasswordToken<'a, D> {
+    pub fn build(self) -> PasswordToken<'a, D, U> {
         PasswordToken {
             auth: self.auth,
             name: self.name,
@@ -62,20 +63,21 @@ where
     }
 }
 
-pub struct PasswordToken<'a, D>
+pub struct PasswordToken<'a, D, U>
 where
     D: Clone,
 {
-    auth: &'a Authenticator<D>,
+    auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
     generate_custom_token_id: fn(usize) -> String,
     password_len: usize,
 }
 
-impl<'a, D> PasswordToken<'a, D>
+impl<'a, D, U> PasswordToken<'a, D, U>
 where
-    D: Clone + DatabaseAdapter,
+    D: Clone + DatabaseAdapter<U>,
+    U: Serialize + DeserializeOwned,
 {
     pub async fn issue(&self, user_id: UserId) -> Result<Token, TokenError> {
         let token = (self.generate_custom_token_id)(self.password_len);

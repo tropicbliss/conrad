@@ -4,23 +4,24 @@ use conrad_core::{
     UserData, UserId,
 };
 use futures::{stream, StreamExt, TryStreamExt};
+use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
-pub struct IdTokenBuilder<'a, D>
+pub struct IdTokenBuilder<'a, D, U>
 where
     D: Clone,
 {
-    auth: &'a Authenticator<D>,
+    auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
     generate_custom_token_id: fn() -> String,
 }
 
-impl<'a, D> IdTokenBuilder<'a, D>
+impl<'a, D, U> IdTokenBuilder<'a, D, U>
 where
     D: Clone,
 {
-    pub fn new(auth: &'a Authenticator<D>, name: String, expires_in: i64) -> Self {
+    pub fn new(auth: &'a Authenticator<D, U>, name: String, expires_in: i64) -> Self {
         Self {
             auth,
             name,
@@ -36,7 +37,7 @@ where
         }
     }
 
-    pub fn build(self) -> IdToken<'a, D> {
+    pub fn build(self) -> IdToken<'a, D, U> {
         IdToken {
             auth: self.auth,
             name: self.name,
@@ -46,19 +47,20 @@ where
     }
 }
 
-pub struct IdToken<'a, D>
+pub struct IdToken<'a, D, U>
 where
     D: Clone,
 {
-    auth: &'a Authenticator<D>,
+    auth: &'a Authenticator<D, U>,
     name: String,
     expires_in: i64,
     generate_custom_token_id: fn() -> String,
 }
 
-impl<'a, D> IdToken<'a, D>
+impl<'a, D, U> IdToken<'a, D, U>
 where
-    D: Clone + DatabaseAdapter,
+    D: Clone + DatabaseAdapter<U>,
+    U: Serialize + DeserializeOwned,
 {
     pub async fn issue(&self, user_id: UserId) -> Result<Token, TokenError> {
         let token = (self.generate_custom_token_id)();
