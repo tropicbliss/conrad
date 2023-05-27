@@ -132,7 +132,7 @@ where
                     .delete_key(&key.provider_id, &key.provider_user_id)
                     .await
             })
-            .buffer_unordered(3)
+            .buffer_unordered(10)
             .try_collect()
             .await;
         match res {

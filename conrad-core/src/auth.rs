@@ -434,7 +434,7 @@ where
         });
         stream::iter(dead_session_ids)
             .map(|id| async move { self.adapter.delete_session(&id).await })
-            .buffer_unordered(3)
+            .buffer_unordered(10)
             .try_collect()
             .await?;
         Ok(())

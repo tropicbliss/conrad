@@ -5,13 +5,40 @@ use crate::{
 use async_trait::async_trait;
 use oauth2::{
     basic::BasicClient, reqwest::async_http_client, AuthUrl, AuthorizationCode, ClientId,
-    ClientSecret, CsrfToken, Scope, TokenResponse, TokenUrl,
+    ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 use reqwest::Client;
 use serde::Deserialize;
 use std::time::Duration;
 
 const PROVIDER_ID: &str = "github";
+
+#[derive(Clone)]
+pub struct GithubConfig {
+    base: OAuthConfig,
+    redirect_uri: Option<String>,
+}
+
+impl GithubConfig {
+    pub fn new(client_id: String, client_secret: String, scope: Vec<String>) -> Self {
+        let base = OAuthConfig {
+            client_id,
+            client_secret,
+            scope,
+        };
+        Self {
+            base,
+            redirect_uri: None,
+        }
+    }
+
+    pub fn set_redirect_uri(self, redirect_uri: String) -> Self {
+        Self {
+            redirect_uri: Some(redirect_uri),
+            ..self
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct GitHubProvider {
@@ -22,7 +49,7 @@ pub struct GitHubProvider {
 
 #[async_trait]
 impl OAuthProvider for GitHubProvider {
-    type Config = OAuthConfig;
+    type Config = GithubConfig;
     type UserInfo = GitHubUser;
 
     fn get_authorization_url(&self) -> RedirectInfo {
@@ -38,12 +65,15 @@ impl OAuthProvider for GitHubProvider {
     }
 
     fn new(config: Self::Config) -> Self {
-        let client = BasicClient::new(
-            ClientId::new(config.client_id),
-            Some(ClientSecret::new(config.client_secret)),
+        let mut client = BasicClient::new(
+            ClientId::new(config.base.client_id),
+            Some(ClientSecret::new(config.base.client_secret)),
             AuthUrl::new("https://github.com/login/oauth/authorize".to_string()).unwrap(),
             Some(TokenUrl::new("https://github.com/login/oauth/access_token".to_string()).unwrap()),
         );
+        if let Some(redirect_uri) = config.redirect_uri {
+            client = client.set_redirect_uri(RedirectUrl::new(redirect_uri).unwrap());
+        }
         let web_client = Client::builder()
             .timeout(Duration::from_secs(15))
             .user_agent("conrad")
@@ -51,7 +81,7 @@ impl OAuthProvider for GitHubProvider {
             .unwrap();
         Self {
             client,
-            scope: config.scope,
+            scope: config.base.scope,
             web_client,
         }
     }

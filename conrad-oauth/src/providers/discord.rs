@@ -85,13 +85,12 @@ impl OAuthProvider for DiscordProvider {
         code: String,
     ) -> Result<ValidationResult<Self::UserInfo>, OAuthError> {
         let tokens = utils::get_tokens_with_expiration(&self.client, code).await?;
-        let provider_user = utils::get_provider_user::<RawUser>(
+        let provider_user = utils::get_provider_user::<DiscordUser>(
             &self.web_client,
             &tokens.access_token,
-            "https://discord.com/api/oauth2/@me",
+            "https://discord.com/api/users/@me",
         )
-        .await?
-        .user;
+        .await?;
         let provider_user_id = provider_user.id.clone();
         Ok(ValidationResult {
             tokens,
@@ -104,16 +103,21 @@ impl OAuthProvider for DiscordProvider {
     }
 }
 
-#[derive(Deserialize)]
-struct RawUser {
-    user: DiscordUser,
-}
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct DiscordUser {
     pub id: String,
     pub username: String,
-    pub avatar: String,
     pub discriminator: String,
-    pub public_flags: i64,
+    pub avatar: String,
+    pub bot: Option<bool>,
+    pub system: Option<bool>,
+    pub mfa_enabled: Option<bool>,
+    pub verified: Option<bool>,
+    pub email: Option<String>,
+    pub flags: Option<i64>,
+    pub banner: Option<String>,
+    pub accent_color: Option<i64>,
+    pub premium_type: Option<i64>,
+    pub public_flags: Option<i64>,
+    pub locale: Option<String>,
 }

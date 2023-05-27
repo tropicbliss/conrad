@@ -3,6 +3,11 @@ name = "diesel-adapter"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+postgres = ["diesel/postgres"]
+mysql = ["diesel/mysql"]
+sqlite = ["diesel/sqlite"]
 
 [dependencies]
+conrad-core = { path = "../conrad-core", version = "0.1.0" }
+diesel = "2.1"
