@@ -147,7 +147,7 @@ impl LinkedinProvider {
                 token_result
                     .scopes()
                     .unwrap()
-                    .into_iter()
+                    .iter()
                     .map(|s| s.to_string())
                     .collect(),
             ),

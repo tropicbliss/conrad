@@ -1,4 +1,4 @@
-use crate::{User, UserId};
+use crate::{errors::AuthError, User, UserId};
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 use std::error::Error;
@@ -8,29 +8,33 @@ pub trait DatabaseAdapter<U>
 where
     U: Serialize + DeserializeOwned,
 {
-    async fn create_user_and_key(&self, user_attributes: &U, key: &KeySchema) -> CreateUserStatus;
-    async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
-    async fn create_session(&self, session_data: &SessionSchema) -> CreateSessionStatus;
-    async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
-    async fn delete_session(&self, session_id: &str) -> GeneralStatus<()>;
-    async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
-    async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
-    async fn update_user(&self, user_id: &UserId, user_attributes: &U) -> UpdateUserStatus;
-    async fn delete_sessions_by_user_id(&self, user_id: &UserId) -> GeneralStatus<()>;
-    async fn delete_keys(&self, user_id: &UserId) -> GeneralStatus<()>;
-    async fn delete_user(&self, user_id: &UserId) -> GeneralStatus<()>;
-    async fn create_key(&self, key: &KeySchema) -> CreateKeyStatus;
-    async fn delete_non_primary_key(&self, key_id: &str) -> GeneralStatus<()>;
-    async fn read_keys_by_user_id(&self, user_id: &UserId) -> GeneralStatus<Vec<KeySchema>>;
+    async fn create_user_and_key(
+        &self,
+        user_attributes: &U,
+        key: &KeySchema,
+    ) -> Result<(), CreateUserError>;
+    async fn read_user(&self, user_id: &UserId) -> Result<User<U>, UserError>;
+    async fn create_session(&self, session_data: &SessionSchema) -> Result<(), CreateSessionError>;
+    async fn read_sessions(&self, user_id: &UserId) -> Result<Vec<SessionSchema>, GeneralError>;
+    async fn delete_session(&self, session_id: &str) -> Result<(), GeneralError>;
+    async fn read_session(&self, session_id: &str) -> Result<SessionSchema, SessionError>;
+    async fn read_key(&self, key_id: &str) -> Result<KeySchema, KeyError>;
+    async fn update_user(&self, user_id: &UserId, user_attributes: &U) -> Result<(), UserError>;
+    async fn delete_sessions_by_user_id(&self, user_id: &UserId) -> Result<(), GeneralError>;
+    async fn delete_keys(&self, user_id: &UserId) -> Result<(), GeneralError>;
+    async fn delete_user(&self, user_id: &UserId) -> Result<(), GeneralError>;
+    async fn create_key(&self, key: &KeySchema) -> Result<(), CreateKeyError>;
+    async fn delete_non_primary_key(&self, key_id: &str) -> Result<(), GeneralError>;
+    async fn read_keys_by_user_id(&self, user_id: &UserId) -> Result<Vec<KeySchema>, GeneralError>;
     async fn update_key_password(
         &self,
         key_id: &str,
         hashed_password: Option<&str>,
-    ) -> UpdateKeyStatus;
+    ) -> Result<(), KeyError>;
     async fn read_session_and_user_by_session_id(
         &self,
         session_id: &str,
-    ) -> ReadSessionAndUserStatus<U>;
+    ) -> Result<DatabaseUserSession<U>, SessionError>;
 }
 
 #[derive(Clone, Debug)]
@@ -56,84 +60,58 @@ pub struct SessionSchema {
 }
 
 #[derive(Debug)]
-pub enum CreateUserStatus {
-    Ok,
+pub enum CreateUserError {
     UserAlreadyExists,
     DatabaseError(Box<dyn Error>),
 }
 
 #[derive(Debug)]
-pub enum ReadUserStatus<U> {
-    Ok(User<U>),
+pub enum UserError {
     UserDoesNotExist,
     DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DatabaseUserSession<U> {
     pub user: User<U>,
     pub session: SessionSchema,
 }
 
 #[derive(Debug)]
-pub enum ReadSessionAndUserStatus<U> {
-    Ok(DatabaseUserSession<U>),
+pub enum SessionError {
     SessionNotFound,
     DatabaseError(Box<dyn Error>),
 }
 
 #[derive(Debug)]
-pub enum CreateSessionStatus {
-    Ok,
+pub enum CreateSessionError {
     InvalidUserId,
     DuplicateSessionId,
     DatabaseError(Box<dyn Error>),
 }
 
 #[derive(Debug)]
-pub enum ReadSessionsStatus {
-    Ok(Vec<SessionSchema>),
+pub enum GeneralError {
     DatabaseError(Box<dyn Error>),
 }
 
-#[derive(Debug)]
-pub enum GeneralStatus<T> {
-    Ok(T),
-    DatabaseError(Box<dyn Error>),
+impl From<GeneralError> for AuthError {
+    fn from(value: GeneralError) -> Self {
+        match value {
+            GeneralError::DatabaseError(err) => AuthError::DatabaseError(err),
+        }
+    }
 }
 
 #[derive(Debug)]
-pub enum ReadSessionStatus {
-    Ok(SessionSchema),
-    DatabaseError(Box<dyn Error>),
-    SessionNotFound,
-}
-
-#[derive(Debug)]
-pub enum ReadKeyStatus {
-    Ok(KeySchema),
-    DatabaseError(Box<dyn Error>),
-    NoKeyFound,
-}
-
-#[derive(Debug)]
-pub enum UpdateUserStatus {
-    Ok,
-    UserDoesNotExist,
-    DatabaseError(Box<dyn Error>),
-}
-
-#[derive(Debug)]
-pub enum CreateKeyStatus {
-    Ok,
+pub enum CreateKeyError {
     DatabaseError(Box<dyn Error>),
     UserDoesNotExist,
     KeyAlreadyExists,
 }
 
 #[derive(Debug)]
-pub enum UpdateKeyStatus {
-    Ok,
+pub enum KeyError {
     DatabaseError(Box<dyn Error>),
     KeyDoesNotExist,
 }
