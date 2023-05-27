@@ -1,8 +1,8 @@
 use crate::{
     database::{
         CreateKeyStatus, CreateSessionStatus, CreateUserStatus, DatabaseAdapter, GeneralStatus,
-        KeySchema, ReadKeyStatus, ReadSessionStatus, ReadSessionsStatus, ReadUserStatus,
-        SessionData, SessionSchema, UpdateKeyStatus, UpdateUserStatus,
+        KeySchema, ReadKeyStatus, ReadSessionAndUserStatus, ReadSessionStatus, ReadSessionsStatus,
+        ReadUserStatus, SessionData, SessionSchema, UpdateKeyStatus, UpdateUserStatus,
     },
     errors::AuthError,
     utils, Key, KeyTimestamp, KeyType, NaiveKeyType, Session, SessionId, SessionState, User,
@@ -11,7 +11,8 @@ use crate::{
 use cookie::{time::OffsetDateTime, Cookie, CookieJar};
 use futures::{stream, StreamExt, TryStreamExt};
 use http::{HeaderMap, Method};
-use std::time::Duration;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{marker::PhantomData, time::Duration};
 use tokio::join;
 use url::Url;
 use uuid::Uuid;
@@ -50,36 +51,35 @@ where
         }
     }
 
-    pub fn build(self) -> Authenticator<D> {
+    pub fn build<U>(self) -> Authenticator<D, U> {
         Authenticator {
             adapter: self.adapter,
             generate_custom_user_id: self.generate_custom_user_id,
             auto_database_cleanup: self.auto_database_cleanup,
+            _user_attributes: PhantomData::default(),
         }
     }
 }
 
 // Authenticator should be kept stateless to uphold the guarantees of IntoProvider cloning this
 #[derive(Clone)]
-pub struct Authenticator<D>
+pub struct Authenticator<D, U>
 where
     D: Clone,
 {
     adapter: D,
     generate_custom_user_id: fn() -> UserId,
     auto_database_cleanup: bool,
+    _user_attributes: PhantomData<U>,
 }
 
-impl<D> Authenticator<D>
+impl<D, U> Authenticator<D, U>
 where
-    D: DatabaseAdapter + Clone,
+    D: DatabaseAdapter<U> + Clone,
+    U: Serialize + DeserializeOwned,
 {
     /// `attributes` represent extra user metadata that can be stored on user creation.
-    pub async fn create_user(
-        &self,
-        data: UserData,
-        attributes: D::UserAttributes,
-    ) -> Result<User<D::UserAttributes>, AuthError> {
+    pub async fn create_user(&self, data: UserData, attributes: U) -> Result<User<U>, AuthError> {
         let user_id = (self.generate_custom_user_id)();
         let key_id = format!("{}:{}", data.provider_id, data.provider_user_id);
         let hashed_password = if let Some(password) = data.password {
@@ -261,7 +261,7 @@ where
         method: &Method,
         headers: &HeaderMap,
         origin_url: &Url,
-    ) -> Result<Option<ValidationSuccess<D::UserAttributes>>, AuthError> {
+    ) -> Result<Option<ValidationSuccess<U>>, AuthError> {
         let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
         if let Some(session_id) = session_id {
             let info = self.validate_session_user(session_id.as_str()).await?;
@@ -304,7 +304,7 @@ where
     async fn validate_session_user(
         &self,
         session_id: &str,
-    ) -> Result<ValidationSuccess<D::UserAttributes>, AuthError> {
+    ) -> Result<ValidationSuccess<U>, AuthError> {
         let info = self.get_session_user(session_id).await?;
         if info.session.state == SessionState::Active {
             Ok(info)
@@ -317,27 +317,25 @@ where
         }
     }
 
-    async fn get_session_user(
-        &self,
-        session_id: &str,
-    ) -> Result<ValidationSuccess<D::UserAttributes>, AuthError> {
+    async fn get_session_user(&self, session_id: &str) -> Result<ValidationSuccess<U>, AuthError> {
         if Uuid::try_parse(session_id).is_err() {
             return Err(AuthError::InvalidSessionId);
         }
-        let res = self.adapter.read_session(session_id).await;
-        let session_data = match res {
-            ReadSessionStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
-            ReadSessionStatus::Ok(s) => s,
-            ReadSessionStatus::SessionNotFound => return Err(AuthError::InvalidSessionId),
+        let res = self
+            .adapter
+            .read_session_and_user_by_session_id(session_id)
+            .await;
+        let database_user_session = match res {
+            ReadSessionAndUserStatus::Ok(s) => s,
+            ReadSessionAndUserStatus::SessionNotFound => return Err(AuthError::InvalidSessionId),
+            ReadSessionAndUserStatus::DatabaseError(err) => {
+                return Err(AuthError::DatabaseError(err))
+            }
         };
+        let database_user = database_user_session.user;
+        let session_data = database_user_session.session;
         let session = Self::validate_database_session(session_data.session_data.clone());
         if let Some(session) = session {
-            let res = self.adapter.read_user(&session_data.user_id).await;
-            let database_user = match res {
-                ReadUserStatus::DatabaseError(err) => return Err(AuthError::DatabaseError(err)),
-                ReadUserStatus::Ok(u) => u,
-                ReadUserStatus::UserDoesNotExist => return Err(AuthError::InvalidUserId),
-            };
             Ok(ValidationSuccess {
                 session,
                 user: database_user,
@@ -424,7 +422,7 @@ where
         }
     }
 
-    pub async fn get_user(&self, user_id: &UserId) -> Result<D::UserAttributes, AuthError> {
+    pub async fn get_user(&self, user_id: &UserId) -> Result<U, AuthError> {
         let res = self.adapter.read_user(user_id).await;
         match res {
             ReadUserStatus::DatabaseError(err) => Err(AuthError::DatabaseError(err)),
@@ -477,7 +475,7 @@ where
     pub async fn update_user_attributes(
         &self,
         user_id: &UserId,
-        attributes: D::UserAttributes,
+        attributes: U,
     ) -> Result<(), AuthError> {
         let res = if self.auto_database_cleanup {
             let (res, _) = join!(

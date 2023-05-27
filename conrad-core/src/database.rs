@@ -4,28 +4,18 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::error::Error;
 
 #[async_trait]
-pub trait DatabaseAdapter
+pub trait DatabaseAdapter<U>
 where
-    Self::UserAttributes: Serialize + DeserializeOwned,
+    U: Serialize + DeserializeOwned,
 {
-    type UserAttributes;
-
-    async fn create_user_and_key(
-        &self,
-        user_attributes: &Self::UserAttributes,
-        key: &KeySchema,
-    ) -> CreateUserStatus;
-    async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<Self::UserAttributes>;
+    async fn create_user_and_key(&self, user_attributes: &U, key: &KeySchema) -> CreateUserStatus;
+    async fn read_user(&self, user_id: &UserId) -> ReadUserStatus<U>;
     async fn create_session(&self, session_data: &SessionSchema) -> CreateSessionStatus;
     async fn read_sessions(&self, user_id: &UserId) -> ReadSessionsStatus;
     async fn delete_session(&self, session_id: &str) -> GeneralStatus<()>;
     async fn read_session(&self, session_id: &str) -> ReadSessionStatus;
     async fn read_key(&self, key_id: &str) -> ReadKeyStatus;
-    async fn update_user(
-        &self,
-        user_id: &UserId,
-        user_attributes: &Self::UserAttributes,
-    ) -> UpdateUserStatus;
+    async fn update_user(&self, user_id: &UserId, user_attributes: &U) -> UpdateUserStatus;
     async fn delete_sessions_by_user_id(&self, user_id: &UserId) -> GeneralStatus<()>;
     async fn delete_keys(&self, user_id: &UserId) -> GeneralStatus<()>;
     async fn delete_user(&self, user_id: &UserId) -> GeneralStatus<()>;
@@ -37,6 +27,10 @@ where
         key_id: &str,
         hashed_password: Option<&str>,
     ) -> UpdateKeyStatus;
+    async fn read_session_and_user_by_session_id(
+        &self,
+        session_id: &str,
+    ) -> ReadSessionAndUserStatus<U>;
 }
 
 #[derive(Clone, Debug)]
@@ -72,6 +66,19 @@ pub enum CreateUserStatus {
 pub enum ReadUserStatus<U> {
     Ok(User<U>),
     UserDoesNotExist,
+    DatabaseError(Box<dyn Error>),
+}
+
+#[derive(Debug)]
+pub struct DatabaseUserSession<U> {
+    pub user: User<U>,
+    pub session: SessionSchema,
+}
+
+#[derive(Debug)]
+pub enum ReadSessionAndUserStatus<U> {
+    Ok(DatabaseUserSession<U>),
+    SessionNotFound,
     DatabaseError(Box<dyn Error>),
 }
 

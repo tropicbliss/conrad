@@ -5,6 +5,7 @@ use conrad_core::{
 };
 use errors::OAuthError;
 use oauth2::url::Url;
+use serde::{de::DeserializeOwned, Serialize};
 
 pub mod errors;
 pub mod providers;
@@ -60,41 +61,42 @@ pub struct AuthInfo {
 }
 
 impl AuthInfo {
-    pub fn into_auth_connector<D>(self, auth: &Authenticator<D>) -> AuthConnector<D>
+    pub fn into_auth_connector<D, U>(self, auth: &Authenticator<D, U>) -> AuthConnector<D, U>
     where
         D: Clone,
     {
         AuthConnector {
             auth_info: self,
-            authenticator: auth,
+            auth,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct AuthConnector<'a, D>
+pub struct AuthConnector<'a, D, U>
 where
     D: Clone,
 {
     auth_info: AuthInfo,
-    authenticator: &'a Authenticator<D>,
+    auth: &'a Authenticator<D, U>,
 }
 
-impl<'a, D> AuthConnector<'a, D>
+impl<'a, D, U> AuthConnector<'a, D, U>
 where
-    D: Clone + DatabaseAdapter,
+    D: Clone + DatabaseAdapter<U>,
+    U: Serialize + DeserializeOwned,
 {
-    pub async fn get_existing_user(&self) -> Result<Option<D::UserAttributes>, AuthError> {
+    pub async fn get_existing_user(&self) -> Result<Option<U>, AuthError> {
         let res = {
             let key = self
-                .authenticator
+                .auth
                 .use_key(
                     self.auth_info.provider_id,
                     &self.auth_info.provider_user_id,
                     None,
                 )
                 .await?;
-            self.authenticator.get_user(&key.user_id).await
+            self.auth.get_user(&key.user_id).await
         };
         match res {
             Ok(e) => Ok(Some(e)),
@@ -109,21 +111,18 @@ where
             self.auth_info.provider_user_id.clone(),
             None,
         );
-        self.authenticator
+        self.auth
             .create_key(user_id, user_data, &NaiveKeyType::Persistent)
             .await
     }
 
-    pub async fn create_user(
-        &self,
-        attributes: D::UserAttributes,
-    ) -> Result<User<D::UserAttributes>, AuthError> {
+    pub async fn create_user(&self, attributes: U) -> Result<User<U>, AuthError> {
         let user_data = UserData::new(
             self.auth_info.provider_id.to_string(),
             self.auth_info.provider_user_id.clone(),
             None,
         );
-        self.authenticator.create_user(user_data, attributes).await
+        self.auth.create_user(user_data, attributes).await
     }
 }
 
