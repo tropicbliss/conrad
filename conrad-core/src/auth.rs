@@ -13,6 +13,7 @@ use futures::{stream, StreamExt, TryStreamExt};
 use http::{HeaderMap, Method};
 use std::{marker::PhantomData, time::Duration};
 use tokio::join;
+use tracing::{debug, error, info, warn};
 use url::Url;
 use uuid::Uuid;
 
@@ -119,11 +120,15 @@ where
             .await
             .map_err(|err| match err {
                 KeyError::DatabaseError(err) => AuthError::DatabaseError(err),
-                KeyError::KeyDoesNotExist => AuthError::InvalidKeyId,
+                KeyError::KeyDoesNotExist => {
+                    error!(key_id, "key not found");
+                    AuthError::InvalidKeyId
+                }
             })?;
         let single_use = database_key_data.expires.filter(|&expires| expires != 0);
         let hashed_password = database_key_data.hashed_password.clone();
         if let Some(hashed_password) = hashed_password {
+            info!("key includes password");
             if let Some(password) = password {
                 if password.is_empty() || hashed_password.is_empty() {
                     return Err(AuthError::InvalidPassword);
@@ -131,23 +136,34 @@ where
                 if hashed_password.starts_with("$2a") {
                     return Err(AuthError::OutdatedPassword);
                 }
-                let valid_password = utils::validate_password(password, hashed_password).await;
+                let valid_password =
+                    utils::validate_password(password.clone(), hashed_password).await;
                 if !valid_password {
+                    error!(password, "incorrect key password");
                     return Err(AuthError::InvalidPassword);
                 }
-                if let Some(expires) = single_use {
-                    let within_expiration = utils::is_within_expiration(expires);
-                    if !within_expiration {
-                        return Err(AuthError::ExpiredKey);
-                    }
-                    self.adapter
-                        .delete_non_primary_key(&database_key_data.id)
-                        .await?;
-                }
             } else {
+                error!(key_id, "key password not provided");
                 return Err(AuthError::InvalidPassword);
             }
+            warn!("validated key password");
+        } else {
+            info!("no password included in key");
         }
+        if let Some(expires) = single_use {
+            info!("key type: single-use");
+            let within_expiration = utils::is_within_expiration(expires);
+            if !within_expiration {
+                error!(key_id, "key expired at {}", expires);
+                return Err(AuthError::ExpiredKey);
+            }
+            self.adapter
+                .delete_non_primary_key(&database_key_data.id)
+                .await?;
+        } else {
+            info!("key type: persistent");
+        }
+        info!(key_id, "validated key");
         Ok(database_key_data.into())
     }
 
@@ -181,7 +197,9 @@ where
     }
 
     pub async fn invalidate_session(&self, session_id: &str) -> Result<(), AuthError> {
-        Ok(self.adapter.delete_session(session_id).await?)
+        self.adapter.delete_session(session_id).await?;
+        info!(session_id, "invalidated session");
+        Ok(())
     }
 
     pub(crate) async fn validate_session_user(
@@ -190,6 +208,7 @@ where
     ) -> Result<ValidationSuccess<U>, AuthError> {
         let info = self.get_session_user(session_id).await?;
         if info.session.state == SessionState::Active {
+            info!(info.session.session_id, "validated session");
             Ok(info)
         } else {
             let renewed_session = self.get_session(session_id, true).await?;
@@ -202,6 +221,7 @@ where
 
     async fn get_session_user(&self, session_id: &str) -> Result<ValidationSuccess<U>, AuthError> {
         if Uuid::try_parse(session_id).is_err() {
+            error!(session_id, "session id is invalid");
             return Err(AuthError::InvalidSessionId);
         }
         let database_user_session = self
@@ -209,7 +229,10 @@ where
             .read_session_and_user_by_session_id(session_id)
             .await
             .map_err(|err| match err {
-                SessionError::SessionNotFound => AuthError::InvalidSessionId,
+                SessionError::SessionNotFound => {
+                    error!(session_id, "session not found");
+                    AuthError::InvalidSessionId
+                }
                 SessionError::DatabaseError(err) => AuthError::DatabaseError(err),
             })?;
         let database_user = database_user_session.user;
@@ -221,6 +244,10 @@ where
                 user: database_user,
             })
         } else {
+            error!(
+                session_id,
+                "session expired at {}", session_data.session_data.idle_period_expires_at
+            );
             if self.auto_database_cleanup {
                 self.adapter
                     .delete_session(&session_data.session_data.session_id)
@@ -232,6 +259,7 @@ where
 
     async fn get_session(&self, session_id: &str, renew: bool) -> Result<Session, AuthError> {
         if Uuid::try_parse(session_id).is_err() {
+            error!(session_id, "session id is invalid");
             return Err(AuthError::InvalidSessionId);
         }
         let database_session =
@@ -240,8 +268,12 @@ where
                 .await
                 .map_err(|err| match err {
                     SessionError::DatabaseError(err) => AuthError::DatabaseError(err),
-                    SessionError::SessionNotFound => AuthError::InvalidSessionId,
+                    SessionError::SessionNotFound => {
+                        error!(session_id, "session not found");
+                        AuthError::InvalidSessionId
+                    }
                 })?;
+        let idle_expires = database_session.session_data.idle_period_expires_at;
         let session = utils::validate_database_session(database_session.session_data);
         if let Some(session) = session {
             if renew {
@@ -254,12 +286,14 @@ where
                     renewed_session
                 } else {
                     self.create_session(user_id).await
-                };
-                Ok(renewed_session?)
+                }?;
+                info!(renewed_session.session_id, "session renewed");
+                Ok(renewed_session)
             } else {
                 Ok(session)
             }
         } else {
+            error!(session_id, "session expired at {}", idle_expires);
             if self.auto_database_cleanup {
                 self.adapter.delete_session(session_id).await?;
             }
@@ -455,7 +489,13 @@ pub fn parse_request_headers<'c>(
     headers: &HeaderMap,
     origin_url: &Url,
 ) -> Option<SessionId<'c>> {
-    let session_id = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value().into());
+    debug!("{}, {}", method, origin_url);
+    let session_id: Option<SessionId> = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value().into());
+    if let Some(session_id) = &session_id {
+        info!("found session cookie: {}", session_id.as_str());
+    } else {
+        info!("no session cookie found");
+    }
     let csrf_check = method != Method::GET && method != Method::HEAD;
     if csrf_check {
         let request_origin = headers.get("origin");
@@ -463,13 +503,17 @@ pub fn parse_request_headers<'c>(
             Some(request_origin) => {
                 if let Ok(request_origin) = request_origin.to_str() {
                     if origin_url.as_str() != request_origin {
+                        error!(request_origin, "invalid request origin");
                         return None;
                     }
                 } else {
+                    error!("invalid origin string: {:?}", request_origin);
                     return None;
                 }
+                info!("valid request origin: {:?}", request_origin);
             }
             None => {
+                error!("no request origin available");
                 return None;
             }
         }

@@ -6,6 +6,7 @@ use crate::{
 };
 use cookie::CookieJar;
 use http::{HeaderMap, Method};
+use tracing::info;
 use url::Url;
 
 pub struct Request<'a, D, U> {
@@ -39,7 +40,14 @@ where
             return;
         }
         self.validated_user = None;
-        self.set_session_cookie(cookies, session);
+        self.stored_session_id = session_id;
+        let cookie = auth::create_session_cookie(session.clone());
+        cookies.add(cookie);
+        if let Some(session) = session {
+            info!(session.session_id, "session cookie stored");
+        } else {
+            info!("session cookie deleted");
+        }
     }
 
     fn set_session_cookie(&mut self, cookies: &mut CookieJar, session: Option<Session>) {
@@ -48,8 +56,13 @@ where
             return;
         }
         self.stored_session_id = session_id;
-        let cookie = auth::create_session_cookie(session);
+        let cookie = auth::create_session_cookie(session.clone());
         cookies.add(cookie);
+        if let Some(session) = session {
+            info!(session.session_id, "session cookie stored");
+        } else {
+            info!("session cookie deleted");
+        }
     }
 }
 
@@ -63,6 +76,7 @@ where
         cookies: &mut CookieJar,
     ) -> Result<Option<ValidationSuccess<U>>, AuthError> {
         if let Some(validated_user) = &self.validated_user {
+            info!("using cached result for session validation");
             return Ok(Some(validated_user.clone()));
         }
         match &self.stored_session_id {
