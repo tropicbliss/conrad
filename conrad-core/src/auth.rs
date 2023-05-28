@@ -4,6 +4,7 @@ use crate::{
         SessionData, SessionError, SessionSchema, UserError,
     },
     errors::AuthError,
+    request::Request,
     utils, Key, KeyTimestamp, KeyType, NaiveKeyType, Session, SessionId, SessionState, User,
     UserData, UserId, ValidationSuccess,
 };
@@ -210,49 +211,8 @@ where
         session_id
     }
 
-    pub async fn validate(
-        &self,
-        cookies: &mut CookieJar,
-        method: &Method,
-        headers: &HeaderMap,
-        origin_url: &Url,
-    ) -> Result<Option<Session>, AuthError> {
-        let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
-        if let Some(session_id) = session_id {
-            let session = self.validate_session(session_id.as_str()).await?;
-            Self::set_session(cookies, Some(session.clone()));
-            Ok(Some(session))
-        } else {
-            Self::set_session(cookies, None);
-            Ok(None)
-        }
-    }
-
     pub async fn invalidate_session(&self, session_id: &str) -> Result<(), AuthError> {
         Ok(self.adapter.delete_session(session_id).await?)
-    }
-
-    pub async fn validate_user(
-        &self,
-        cookies: &mut CookieJar,
-        method: &Method,
-        headers: &HeaderMap,
-        origin_url: &Url,
-    ) -> Result<Option<ValidationSuccess<U>>, AuthError> {
-        let session_id = Self::parse_request_headers(cookies, method, headers, origin_url);
-        if let Some(session_id) = session_id {
-            let info = self.validate_session_user(session_id.as_str()).await?;
-            Self::set_session(cookies, Some(info.session.clone()));
-            Ok(Some(info))
-        } else {
-            Self::set_session(cookies, None);
-            Ok(None)
-        }
-    }
-
-    pub fn set_session(cookies: &mut CookieJar, session: Option<Session>) {
-        let cookie = Self::create_session_cookie(session);
-        cookies.add(cookie);
     }
 
     #[must_use]
@@ -278,7 +238,7 @@ where
         }
     }
 
-    async fn validate_session_user(
+    pub(crate) async fn validate_session_user(
         &self,
         session_id: &str,
     ) -> Result<ValidationSuccess<U>, AuthError> {
@@ -308,7 +268,7 @@ where
             })?;
         let database_user = database_user_session.user;
         let session_data = database_user_session.session;
-        let session = Self::validate_database_session(session_data.session_data.clone());
+        let session = utils::validate_database_session(session_data.session_data.clone());
         if let Some(session) = session {
             Ok(ValidationSuccess {
                 session,
@@ -324,34 +284,6 @@ where
         }
     }
 
-    async fn validate_session(&self, session_id: &str) -> Result<Session, AuthError> {
-        let session = self.get_session(session_id, false).await?;
-        if session.state == SessionState::Active {
-            Ok(session)
-        } else {
-            self.get_session(session_id, true).await
-        }
-    }
-
-    fn validate_database_session(database_session: SessionData) -> Option<Session> {
-        if utils::is_within_expiration(database_session.idle_period_expires_at) {
-            let active_key = utils::is_within_expiration(database_session.active_period_expires_at);
-            Some(Session {
-                state: if active_key {
-                    SessionState::Active
-                } else {
-                    SessionState::Idle
-                },
-                fresh: false,
-                active_period_expires_at: database_session.active_period_expires_at,
-                idle_period_expires_at: database_session.idle_period_expires_at,
-                session_id: database_session.session_id,
-            })
-        } else {
-            None
-        }
-    }
-
     async fn get_session(&self, session_id: &str, renew: bool) -> Result<Session, AuthError> {
         if Uuid::try_parse(session_id).is_err() {
             return Err(AuthError::InvalidSessionId);
@@ -364,7 +296,7 @@ where
                     SessionError::DatabaseError(err) => AuthError::DatabaseError(err),
                     SessionError::SessionNotFound => AuthError::InvalidSessionId,
                 })?;
-        let session = Self::validate_database_session(database_session.session_data);
+        let session = utils::validate_database_session(database_session.session_data);
         if let Some(session) = session {
             if renew {
                 let user_id = database_session.user_id;
@@ -413,6 +345,16 @@ where
             idle_period_expires_at: idle_period_expires_at.unix_timestamp(),
             session_id,
         }
+    }
+
+    pub fn handle_request<'a>(
+        &'a self,
+        cookies: &CookieJar,
+        method: &Method,
+        headers: &HeaderMap,
+        origin_url: &Url,
+    ) -> Request<'a, D, U> {
+        Request::new(self, cookies, method, headers, origin_url)
     }
 
     async fn delete_dead_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
@@ -623,5 +565,61 @@ impl From<KeySchema> for Key {
             provider_id: provider_id.to_string(),
             provider_user_id: provider_user_id.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{database::SessionData, utils::validate_database_session, Session, SessionState};
+    use cookie::time::OffsetDateTime;
+    use std::time::Duration;
+
+    #[test]
+    fn validate_database_session_returns_none_if_dead_state() {
+        let output = validate_database_session(SessionData {
+            active_period_expires_at: OffsetDateTime::now_utc().unix_timestamp(),
+            idle_period_expires_at: (OffsetDateTime::now_utc() - Duration::from_millis(10 * 1000))
+                .unix_timestamp(),
+            session_id: String::new(),
+        });
+        assert!(output.is_none());
+    }
+
+    #[test]
+    fn validate_database_session_returns_idle_session_if_idle_state() {
+        let output = validate_database_session(SessionData {
+            active_period_expires_at: (OffsetDateTime::now_utc()
+                - Duration::from_millis(10 * 1000))
+            .unix_timestamp(),
+            idle_period_expires_at: (OffsetDateTime::now_utc() + Duration::from_millis(10 * 1000))
+                .unix_timestamp(),
+            session_id: String::new(),
+        });
+        assert!(matches!(
+            output,
+            Some(Session {
+                state: SessionState::Idle,
+                ..
+            })
+        ))
+    }
+
+    #[test]
+    fn validate_database_session_returns_active_session_if_active_state() {
+        let output = validate_database_session(SessionData {
+            active_period_expires_at: (OffsetDateTime::now_utc()
+                + Duration::from_millis(10 * 1000))
+            .unix_timestamp(),
+            idle_period_expires_at: (OffsetDateTime::now_utc() + Duration::from_millis(10 * 1000))
+                .unix_timestamp(),
+            session_id: String::new(),
+        });
+        assert!(matches!(
+            output,
+            Some(Session {
+                state: SessionState::Active,
+                ..
+            })
+        ))
     }
 }
