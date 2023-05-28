@@ -1,5 +1,8 @@
 use crate::{
-    auth::Authenticator, database::DatabaseAdapter, errors::AuthError, Session, ValidationSuccess,
+    auth::{self, Authenticator},
+    database::DatabaseAdapter,
+    errors::AuthError,
+    Session, ValidationSuccess,
 };
 use cookie::CookieJar;
 use http::{HeaderMap, Method};
@@ -25,10 +28,8 @@ where
         origin_url: &Url,
     ) -> Self {
         Self {
-            stored_session_id: Authenticator::<D, U>::parse_request_headers(
-                cookies, method, headers, origin_url,
-            )
-            .map(|session_id| session_id.to_string()),
+            stored_session_id: auth::parse_request_headers(cookies, method, headers, origin_url)
+                .map(|session_id| session_id.to_string()),
             auth,
             validated_user: None,
         }
@@ -49,7 +50,7 @@ where
             return;
         }
         self.stored_session_id = session_id;
-        let cookie = Authenticator::<D, U>::create_session_cookie(session);
+        let cookie = auth::create_session_cookie(session);
         cookies.add(cookie);
     }
 }

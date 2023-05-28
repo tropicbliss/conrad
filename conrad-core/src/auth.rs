@@ -154,7 +154,7 @@ where
     }
 
     pub async fn create_session(&self, user_id: UserId) -> Result<Session, AuthError> {
-        let session_info = Self::generate_session_id();
+        let session_info = generate_session_id();
         let session_schema = SessionSchema {
             session_data: session_info,
             user_id: user_id.clone(),
@@ -182,60 +182,8 @@ where
         })
     }
 
-    #[must_use]
-    pub fn parse_request_headers<'c>(
-        cookies: &'c CookieJar,
-        method: &Method,
-        headers: &HeaderMap,
-        origin_url: &Url,
-    ) -> Option<SessionId<'c>> {
-        let session_id = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value().into());
-        let csrf_check = method != Method::GET && method != Method::HEAD;
-        if csrf_check {
-            let request_origin = headers.get("origin");
-            match request_origin {
-                Some(request_origin) => {
-                    if let Ok(request_origin) = request_origin.to_str() {
-                        if origin_url.as_str() != request_origin {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
-                }
-                None => {
-                    return None;
-                }
-            }
-        }
-        session_id
-    }
-
     pub async fn invalidate_session(&self, session_id: &str) -> Result<(), AuthError> {
         Ok(self.adapter.delete_session(session_id).await?)
-    }
-
-    #[must_use]
-    pub fn create_session_cookie<'c>(session: Option<Session>) -> Cookie<'c> {
-        if let Some(session) = session {
-            Cookie::build(SESSION_COOKIE_NAME, session.session_id)
-                .same_site(cookie::SameSite::Lax)
-                .path("/")
-                .http_only(true)
-                .expires(
-                    OffsetDateTime::from_unix_timestamp(session.idle_period_expires_at).unwrap(),
-                )
-                .secure(true)
-                .finish()
-        } else {
-            Cookie::build(SESSION_COOKIE_NAME, "")
-                .same_site(cookie::SameSite::Lax)
-                .path("/")
-                .http_only(true)
-                .expires(OffsetDateTime::UNIX_EPOCH)
-                .secure(true)
-                .finish()
-        }
     }
 
     pub(crate) async fn validate_session_user(
@@ -333,20 +281,6 @@ where
             .user_attributes)
     }
 
-    fn generate_session_id() -> SessionData {
-        const ACTIVE_PERIOD: u64 = 1000 * 60 * 60 * 24;
-        const IDLE_PERIOD: u64 = 1000 * 60 * 60 * 24 * 14;
-        let session_id = Uuid::new_v4().to_string();
-        let active_period_expires_at =
-            OffsetDateTime::now_utc() + Duration::from_millis(ACTIVE_PERIOD);
-        let idle_period_expires_at = active_period_expires_at + Duration::from_millis(IDLE_PERIOD);
-        SessionData {
-            active_period_expires_at: active_period_expires_at.unix_timestamp(),
-            idle_period_expires_at: idle_period_expires_at.unix_timestamp(),
-            session_id,
-        }
-    }
-
     pub fn handle_request<'a>(
         &'a self,
         cookies: &CookieJar,
@@ -417,7 +351,7 @@ where
             None
         };
         let key_type = if let NaiveKeyType::SingleUse { expires_in } = key_type {
-            let expires_at = Self::get_one_time_key_expiration(expires_in.get_timestamp());
+            let expires_at = get_one_time_key_expiration(expires_in.get_timestamp());
             self.adapter
                 .create_key(&KeySchema {
                     id: key_id,
@@ -463,12 +397,6 @@ where
             provider_id: user_data.provider_id,
             provider_user_id: user_data.provider_user_id,
         })
-    }
-
-    fn get_one_time_key_expiration(duration: i64) -> i64 {
-        assert!(duration >= 0, "duration cannot be negative");
-        (OffsetDateTime::now_utc() + Duration::from_millis(duration as u64 * 1000 * 1000))
-            .unix_timestamp()
     }
 
     pub async fn get_key(
@@ -519,6 +447,75 @@ where
     ) -> Result<(), AuthError> {
         let key_id = format!("{provider_id}:{provider_user_id}");
         Ok(self.adapter.delete_non_primary_key(&key_id).await?)
+    }
+}
+
+#[must_use]
+pub fn parse_request_headers<'c>(
+    cookies: &'c CookieJar,
+    method: &Method,
+    headers: &HeaderMap,
+    origin_url: &Url,
+) -> Option<SessionId<'c>> {
+    let session_id = cookies.get(SESSION_COOKIE_NAME).map(|c| c.value().into());
+    let csrf_check = method != Method::GET && method != Method::HEAD;
+    if csrf_check {
+        let request_origin = headers.get("origin");
+        match request_origin {
+            Some(request_origin) => {
+                if let Ok(request_origin) = request_origin.to_str() {
+                    if origin_url.as_str() != request_origin {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            None => {
+                return None;
+            }
+        }
+    }
+    session_id
+}
+
+fn generate_session_id() -> SessionData {
+    const ACTIVE_PERIOD: u64 = 1000 * 60 * 60 * 24;
+    const IDLE_PERIOD: u64 = 1000 * 60 * 60 * 24 * 14;
+    let session_id = Uuid::new_v4().to_string();
+    let active_period_expires_at = OffsetDateTime::now_utc() + Duration::from_millis(ACTIVE_PERIOD);
+    let idle_period_expires_at = active_period_expires_at + Duration::from_millis(IDLE_PERIOD);
+    SessionData {
+        active_period_expires_at: active_period_expires_at.unix_timestamp(),
+        idle_period_expires_at: idle_period_expires_at.unix_timestamp(),
+        session_id,
+    }
+}
+
+fn get_one_time_key_expiration(duration: i64) -> i64 {
+    assert!(duration >= 0, "duration cannot be negative");
+    (OffsetDateTime::now_utc() + Duration::from_millis(duration as u64 * 1000 * 1000))
+        .unix_timestamp()
+}
+
+#[must_use]
+pub fn create_session_cookie<'c>(session: Option<Session>) -> Cookie<'c> {
+    if let Some(session) = session {
+        Cookie::build(SESSION_COOKIE_NAME, session.session_id)
+            .same_site(cookie::SameSite::Lax)
+            .path("/")
+            .http_only(true)
+            .expires(OffsetDateTime::from_unix_timestamp(session.idle_period_expires_at).unwrap())
+            .secure(true)
+            .finish()
+    } else {
+        Cookie::build(SESSION_COOKIE_NAME, "")
+            .same_site(cookie::SameSite::Lax)
+            .path("/")
+            .http_only(true)
+            .expires(OffsetDateTime::UNIX_EPOCH)
+            .secure(true)
+            .finish()
     }
 }
 
