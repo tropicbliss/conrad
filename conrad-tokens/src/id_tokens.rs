@@ -4,7 +4,6 @@ use conrad_core::{
     UserData, UserId,
 };
 use futures::{stream, StreamExt, TryStreamExt};
-use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
 pub struct IdTokenBuilder<'a, D, U> {
@@ -51,7 +50,6 @@ pub struct IdToken<'a, D, U> {
 impl<'a, D, U> IdToken<'a, D, U>
 where
     D: DatabaseAdapter<U>,
-    U: Serialize + DeserializeOwned,
 {
     pub async fn issue(&self, user_id: UserId) -> Result<Token, TokenError> {
         let token = (self.generate_custom_token_id)();

@@ -6,7 +6,6 @@ use crate::{
 };
 use cookie::CookieJar;
 use http::{HeaderMap, Method};
-use serde::{de::DeserializeOwned, Serialize};
 use url::Url;
 
 pub struct Request<'a, D, U> {
@@ -18,7 +17,6 @@ pub struct Request<'a, D, U> {
 impl<'a, D, U> Request<'a, D, U>
 where
     D: DatabaseAdapter<U>,
-    U: Serialize + DeserializeOwned,
 {
     pub(crate) fn new(
         auth: &'a Authenticator<D, U>,
@@ -58,7 +56,7 @@ where
 impl<'a, D, U> Request<'a, D, U>
 where
     D: DatabaseAdapter<U>,
-    U: Serialize + DeserializeOwned + Clone,
+    U: Clone,
 {
     pub async fn validate_user(
         &mut self,

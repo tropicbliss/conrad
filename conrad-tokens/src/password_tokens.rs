@@ -5,7 +5,6 @@ use conrad_core::{
 };
 use futures::{stream, StreamExt, TryStreamExt};
 use rand::{distributions::Uniform, Rng};
-use serde::{de::DeserializeOwned, Serialize};
 
 pub struct PasswordTokenBuilder<'a, D, U> {
     auth: &'a Authenticator<D, U>,
@@ -68,7 +67,6 @@ pub struct PasswordToken<'a, D, U> {
 impl<'a, D, U> PasswordToken<'a, D, U>
 where
     D: DatabaseAdapter<U>,
-    U: Serialize + DeserializeOwned,
 {
     pub async fn issue(&self, user_id: UserId) -> Result<Token, TokenError> {
         let token = (self.generate_custom_token_id)(self.password_len);

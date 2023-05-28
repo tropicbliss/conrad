@@ -1,13 +1,9 @@
 use crate::{errors::AuthError, User, UserId};
 use async_trait::async_trait;
-use serde::{de::DeserializeOwned, Serialize};
 use std::error::Error;
 
 #[async_trait]
-pub trait DatabaseAdapter<U>
-where
-    U: Serialize + DeserializeOwned,
-{
+pub trait DatabaseAdapter<U> {
     async fn create_user_and_key(
         &self,
         user_attributes: &U,

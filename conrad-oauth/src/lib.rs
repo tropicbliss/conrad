@@ -5,7 +5,6 @@ use conrad_core::{
 };
 use errors::OAuthError;
 use oauth2::url::Url;
-use serde::{de::DeserializeOwned, Serialize};
 
 pub mod errors;
 pub mod providers;
@@ -78,7 +77,6 @@ pub struct AuthConnector<'a, D, U> {
 impl<'a, D, U> AuthConnector<'a, D, U>
 where
     D: DatabaseAdapter<U>,
-    U: Serialize + DeserializeOwned,
 {
     pub async fn get_existing_user(&self) -> Result<Option<U>, AuthError> {
         let res = {

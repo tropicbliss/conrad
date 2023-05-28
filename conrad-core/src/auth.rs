@@ -11,7 +11,6 @@ use crate::{
 use cookie::{time::OffsetDateTime, Cookie, CookieJar};
 use futures::{stream, StreamExt, TryStreamExt};
 use http::{HeaderMap, Method};
-use serde::{de::DeserializeOwned, Serialize};
 use std::{marker::PhantomData, time::Duration};
 use tokio::join;
 use url::Url;
@@ -68,7 +67,6 @@ pub struct Authenticator<D, U> {
 impl<D, U> Authenticator<D, U>
 where
     D: DatabaseAdapter<U>,
-    U: Serialize + DeserializeOwned,
 {
     /// `attributes` represent extra user metadata that can be stored on user creation.
     pub async fn create_user(&self, data: UserData, attributes: U) -> Result<User<U>, AuthError> {
