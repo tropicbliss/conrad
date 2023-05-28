@@ -17,7 +17,7 @@ where
     D: DatabaseAdapter<U>,
     U: Serialize + DeserializeOwned,
 {
-    pub(crate) fn new<'c>(
+    pub(crate) fn new(
         auth: &'a Authenticator<D, U>,
         cookies: &CookieJar,
         method: &Method,
