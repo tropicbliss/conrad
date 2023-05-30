@@ -10,7 +10,7 @@ keywords = ["authentication"]
 categories = ["Web programming"]
 
 [dependencies]
-conrad-core = { path = "../conrad-core", version = "0.1.0" }
+conrad-core = { path = "../conrad-core", version = "0.2.0" }
 futures = "0.3"
 rand = "0.8"
 thiserror = "1.0"

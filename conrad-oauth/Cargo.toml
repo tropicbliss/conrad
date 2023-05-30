@@ -11,7 +11,7 @@ categories = ["Web programming"]
 
 [dependencies]
 async-trait = "0.1"
-conrad-core = { path = "../conrad-core", version = "0.1.0" }
+conrad-core = { path = "../conrad-core", version = "0.2.0" }
 oauth2 = "4.4"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
