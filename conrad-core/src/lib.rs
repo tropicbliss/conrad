@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod database;
 pub mod errors;
+pub mod middleware;
 pub mod request;
 mod utils;
 

@@ -4,6 +4,7 @@ use crate::{
         SessionData, SessionError, SessionSchema, UserError,
     },
     errors::AuthError,
+    middleware::IntoRequest,
     request::Request,
     utils, Key, KeyTimestamp, KeyType, NaiveKeyType, Session, SessionId, SessionState, User,
     UserData, UserId, ValidationSuccess,
@@ -312,14 +313,17 @@ where
             .user_attributes)
     }
 
-    pub fn handle_request<'a>(
-        &'a self,
-        cookies: &CookieJar,
-        method: &Method,
-        headers: &HeaderMap,
-        origin_url: &Url,
-    ) -> Request<'a, D, U> {
-        Request::new(self, cookies, method, headers, origin_url)
+    pub fn handle_request<'a, R>(&'a self, request: R) -> Request<'a, D, U>
+    where
+        R: IntoRequest,
+    {
+        Request::new(
+            self,
+            request.get_cookies(),
+            request.get_method(),
+            request.get_headers(),
+            request.get_origin_url(),
+        )
     }
 
     async fn delete_dead_user_sessions(&self, user_id: &UserId) -> Result<(), AuthError> {
