@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 description = "Rust authentication framework"
 repository = "https://github.com/tropicbliss/conrad"
-readme = "README.md"
+readme = "../README.md"
 keywords = ["authentication"]
 
 [features]
