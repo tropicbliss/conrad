@@ -69,7 +69,6 @@ impl<D, U> Authenticator<D, U>
 where
     D: DatabaseAdapter<U>,
 {
-    /// `attributes` represent extra user metadata that can be stored on user creation.
     pub async fn create_user(&self, data: UserData, attributes: U) -> Result<User<U>, AuthError> {
         let user_id = (self.generate_custom_user_id)();
         let key_id = format!("{}:{}", data.provider_id, data.provider_user_id);
